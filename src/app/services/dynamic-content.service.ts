@@ -1,8 +1,6 @@
-import { DOCUMENT } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
-import { Inject, Injectable, Renderer2, RendererFactory2 } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
-import { MOCK_DATA } from '../mocks/getContent.mock';
+import { MOCK_DATA_COMPLEX_FORM } from '../mocks/getContent.mock';
 import { DynamicContentInterface } from '../interfaces/DynamicContent.interface';
 
 @Injectable({
@@ -19,10 +17,8 @@ export class DynamicContentService {
 
 
   public getContent(): Observable<DynamicContentInterface> {
-    const mockData:DynamicContentInterface = MOCK_DATA;
+    const mockData:DynamicContentInterface = MOCK_DATA_COMPLEX_FORM;
     return of(mockData).pipe(
-      // Uncomment the following line to fetch from the API instead of mock data
-      // this.http.get<DynamicContentInterface>(this.apiUrl)
     );
   }
 }
