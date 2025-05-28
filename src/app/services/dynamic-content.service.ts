@@ -31,7 +31,8 @@ export class DynamicContentService {
             configuracion: item.url,
             plantillaHTML: item.htmlComponent,
             css: item.cssComponent,
-            otros: { id_DocumentHTMLCSS: item.id_DocumentHTMLCSS }
+            id_DocumentHTMLCSS: item.id_DocumentHTMLCSS,
+            otros: {} // Puedes agregar más propiedades si es necesario
           } as DynamicContentInterface)); 
         }
         return []; 

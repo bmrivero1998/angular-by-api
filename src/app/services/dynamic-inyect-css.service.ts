@@ -33,7 +33,8 @@ export class DynamicInyectCssService {
     }
   }
 
-  generateStyleId(componentId: string): string {
-    return `<span class="math-inline">\{this\.styleElementIdPrefix\}</span>{componentId}`;
+  public generateStyleId(componentId: string): string {
+    // Usar comillas invertidas (`) para la interpolación
+    return `<span class="math-inline">${this.styleElementIdPrefix}</span>${componentId}`;
   }
 }

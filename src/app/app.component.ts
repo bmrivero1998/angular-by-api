@@ -109,10 +109,10 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
 
         this.displayableContents = apiResponseData.map((response: DynamicContentInterface) => {
           let styleId: string | undefined;
-          if (response.css && response.configuracion) {
-            styleId = this.dycs.generateStyleId(response.configuracion);
+          if (response.css && response.id_DocumentHTMLCSS) {
+            styleId = this.dycs.generateStyleId(response.id_DocumentHTMLCSS);
             this.dycs.injectCss(response.css, styleId);
-            this.dynamicStyleIds.push(styleId);
+            this.dynamicStyleIds.push(styleId+ Math.random().toString(36).substring(2, 15)); // Asegurar un ID único
           }
 
           return {
