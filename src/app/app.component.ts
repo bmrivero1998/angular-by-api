@@ -5,78 +5,59 @@ import {
   Renderer2,
   ElementRef,
   ViewChild,
-  AfterViewInit
+  AfterViewInit,
+  ChangeDetectorRef // Importar ChangeDetectorRef
 } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Subscription } from 'rxjs'; // Para manejar las suscripciones
+import { Subscription } from 'rxjs';
 
 import { DynamicClickPayload, DynamicContentInterface, DynamicFormDataPayload } from './interfaces/DynamicContent.interface';
-
 import { DynamicContentService } from './services/dynamic-content.service';
 import { DynamicInyectCssService } from './services/dynamic-inyect-css.service';
 import { DynamicInteractionService } from './services/dynamic-interaction.service';
 import { DynamicViewerComponent } from './components/dynamic-viewer/dynamic-viewer.component';
+import { CommonModule } from '@angular/common';
+
+// Interfaz para el contenido que se mostrará
+export interface DisplayableDynamicContent extends DynamicContentInterface {
+  safeHtml: SafeHtml | null;
+  styleId?: string;
+}
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [ DynamicViewerComponent ], // DynamicViewerComponent también debe ser standalone
+  imports: [DynamicViewerComponent, CommonModule],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
 export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
 
-  public data: DynamicContentInterface | null = null;
-  public safeHtmlToDisplay: SafeHtml | null = null; // HTML sanitizado para el hijo
-  private dynamicStyleId: string | null = null;
+  // Almacenará todos los contenidos dinámicos listos para mostrar
+  public displayableContents: DisplayableDynamicContent[] = [];
+  private dynamicStyleIds: string[] = []; // Para rastrear los IDs de todos los CSS inyectados
 
-  // Referencia al elemento HOST de <app-dynamic-viewer>
-  @ViewChild('dynamicViewerHost', { read: ElementRef }) dynamicViewerHostRef!: ElementRef<HTMLElement>;
+  // Referencia al elemento HOST que CONTENDRÁ los <app-dynamic-viewer>
+  @ViewChild('dynamicContentHost', { static: false }) dynamicContentHostRef!: ElementRef<HTMLElement>;
 
-  // Funciones para limpiar los listeners del DOM
   private unlistenClickFn: (() => void) | null = null;
   private unlistenSubmitFn: (() => void) | null = null;
 
-  // Suscripciones a los observables del servicio de interacción
   private clickSubscription: Subscription | undefined;
   private formSubscription: Subscription | undefined;
 
   constructor(
     private readonly dcs: DynamicContentService,
     private readonly dycs: DynamicInyectCssService,
-    private readonly dis: DynamicInteractionService, // El servicio de interacción
-    private readonly sanitizer: DomSanitizer,      // Para sanitizar HTML
-    private readonly renderer: Renderer2           // Para adjuntar listeners al DOM
+    private readonly dis: DynamicInteractionService,
+    private readonly sanitizer: DomSanitizer,
+    private readonly renderer: Renderer2,
+    private readonly cdr: ChangeDetectorRef // Inyectar ChangeDetectorRef
   ) {}
 
   ngOnInit() {
-    this.dcs.getContent().subscribe((apiResponseData) => {
-      this.data = apiResponseData;
+    this.loadDynamicContent(); // Cargar el contenido al iniciar
 
-      // 1. Sanitizar el HTML
-      if (apiResponseData.plantillaHTML) {
-        this.safeHtmlToDisplay = this.sanitizer.bypassSecurityTrustHtml(apiResponseData.plantillaHTML);
-      } else {
-        this.safeHtmlToDisplay = null;
-      }
-
-      // 2. Inyectar el CSS
-      if (apiResponseData.css && apiResponseData.configuracion) {
-        this.dynamicStyleId = this.dycs.generateStyleId(apiResponseData.configuracion);
-        this.dycs.injectCss(apiResponseData.css, this.dynamicStyleId);
-      }
-
-      // 3. Intentar configurar listeners.
-      // Si dynamicViewerHostRef ya está disponible (puede que no en la primera carga dentro de ngOnInit),
-      // se configurarán. Si no, ngAfterViewInit lo hará.
-      // Usamos setTimeout para darle a Angular un ciclo para renderizar el [innerHTML]
-      // antes de intentar acceder a su contenido.
-      if (this.dynamicViewerHostRef) {
-          setTimeout(() => this.setupEventListenersOnDynamicContent(), 0);
-      }
-    });
-
-    // 4. Suscribirse a los eventos del DynamicInteractionService
     this.clickSubscription = this.dis.clickAction$.subscribe(payload => {
       this.handleServiceClickEvent(payload);
     });
@@ -86,65 +67,156 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
+  /**
+   * Configura los listeners para los eventos de clic y submit de formularios en el contenido dinámico
+   * solo si hay contenido y el host (<div #dynamicContentHost>) está listo.
+   * Esto se debe a que dynamicContentHostRef no estará disponible hasta que se complete el ciclo de
+   * vida ngAfterViewInit.
+   */
   ngAfterViewInit(): void {
-    // Si el HTML ya fue cargado por ngOnInit y el ViewChild está listo,
-    // configuramos los listeners. Esto cubre el caso de la carga inicial.
-    if (this.safeHtmlToDisplay && this.dynamicViewerHostRef) {
+    // Si hay contenido y el host está listo, configurar listeners.
+    // Esto es importante porque dynamicContentHostRef no estará disponible hasta AfterViewInit.
+    if (this.displayableContents.length > 0 && this.dynamicContentHostRef) {
       this.setupEventListenersOnDynamicContent();
     }
   }
 
+  /**
+   * Carga el contenido dinámico desde el servicio y lo renderiza en la plantilla.
+   * Si el contenido ya se cargó previamente, limpiará los estilos CSS inyectados y
+   * volverá a renderizar el contenido.
+   * Notifica a Angular de los cambios en los datos con ChangeDetectorRef.
+   * Si el contenido se carga por primera vez, ngAfterViewInit se encargará de
+   * configurar los listeners para los eventos de clic y submit en el contenido dinámico.
+   * Si el contenido ya se cargó previamente, usará setTimeout para asegurarse de que
+   * el DOM esté renderizado por el *ngFor antes de configurar los listeners.
+   * En caso de error, notifica a Angular de los cambios en los datos y vacía el
+   * arreglo de contenido.
+   */
+  private loadDynamicContent(): void {
+    // Limpiar estilos anteriores si se recarga el contenido
+    this.dynamicStyleIds.forEach(id => this.dycs.removeCss(id));
+    this.dynamicStyleIds = [];
+    this.displayableContents = [];
+
+    this.dcs.getContent().subscribe({
+      next: (apiResponseData) => {
+        if (!apiResponseData || apiResponseData.length === 0) {
+          this.displayableContents = [];
+          this.cdr.detectChanges(); // Notificar a Angular de los cambios
+          return;
+        }
+
+        this.displayableContents = apiResponseData.map((response: DynamicContentInterface) => {
+          let styleId: string | undefined;
+          if (response.css && response.configuracion) {
+            styleId = this.dycs.generateStyleId(response.configuracion);
+            this.dycs.injectCss(response.css, styleId);
+            this.dynamicStyleIds.push(styleId);
+          }
+
+          return {
+            ...response, // Copia todas las propiedades de DynamicContentInterface
+            safeHtml: response.plantillaHTML
+              ? this.sanitizer.bypassSecurityTrustHtml(response.plantillaHTML)
+              : null,
+            styleId: styleId
+          };
+        });
+        
+        this.cdr.detectChanges(); // Notificar a Angular que los datos han cambiado
+
+        // Esperar a que el DOM se actualice con *ngFor y luego configurar listeners
+        // si dynamicContentHostRef ya está disponible (lo cual debería ser si no es la primera carga).
+        // Para la primera carga, ngAfterViewInit se encargará.
+        if (this.dynamicContentHostRef && this.displayableContents.length > 0) {
+          // Usamos setTimeout para asegurar que el DOM está renderizado por el *ngFor
+           setTimeout(() => this.setupEventListenersOnDynamicContent(), 0);
+        }
+      },
+      error: (err) => {
+        console.error("Error al cargar contenido dinámico:", err);
+        this.displayableContents = [];
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+/**
+ * Configura los listeners para los eventos de clic y submit de formularios en el contenido dinámico.
+ * Este método se llama en ngAfterViewInit y cada vez que el contenido dinámico cambia.
+ * Primero, borra los listeners anteriores y luego configura los nuevos.
+ * Si dynamicContentHostRef no existe o no hay contenido para configurar listeners, no hace nada.
+ * Luego, configura un listener para clicks en el host y otro para submits de formularios.
+ * Estos listeners utilizan la delegación de eventos para detectar los eventos en los componentes dinámicos.
+ * Si se detecta un clic en un botón dinámico, se llama a reportClick con los detalles del clic.
+ * Si se detecta un submit de formulario, se llama a reportFormSubmit con los datos del formulario.
+ * En ambos casos, se utiliza la configuración del item específico para determinar el sourceId.
+ */
   setupEventListenersOnDynamicContent(): void {
     this.removeEventListenersFromDynamicContent(); // Limpiar listeners anteriores
 
-    if (!this.dynamicViewerHostRef || !this.dynamicViewerHostRef.nativeElement) {
-      console.warn('AppComponent: dynamicViewerHostRef no está disponible para configurar listeners.');
+    if (!this.dynamicContentHostRef || !this.dynamicContentHostRef.nativeElement || this.displayableContents.length === 0) {
+      // console.warn('AppComponent: dynamicContentHostRef no disponible o no hay contenido para configurar listeners.');
       return;
     }
 
-    // El contenido de [innerHTML] está dentro de un <div> en la plantilla de DynamicViewerComponent
-    const innerContentDiv = this.dynamicViewerHostRef.nativeElement.querySelector('div');
+    const hostElement = this.dynamicContentHostRef.nativeElement;
 
-    if (innerContentDiv) {
-      // Listener para Clics (Delegación de eventos)
-      this.unlistenClickFn = this.renderer.listen(innerContentDiv, 'click', (event: Event) => {
-        let targetElement = event.target as HTMLElement;
-        while (targetElement && targetElement !== innerContentDiv) {
-          if (targetElement.matches('button[data-dynamic-action]')) { // O cualquier selector para tus botones
-            const action = targetElement.getAttribute('data-dynamic-action');
-            // Reportar al servicio de interacción
-            this.dis.reportClick({
-              action: action || 'unknown_click_action',
-              sourceId: this.data?.configuracion || 'app-root-dynamic-content',
-              clickedElement: targetElement,
-              originalEvent: event
-            });
-            break;
-          }
-          targetElement = targetElement.parentElement as HTMLElement;
+    // Listener para Clics (Delegación de eventos en el host)
+    this.unlistenClickFn = this.renderer.listen(hostElement, 'click', (event: Event) => {
+      let targetElement = event.target as HTMLElement;
+      // Buscar el contenedor del componente dinámico específico que originó el evento
+      const dynamicItemContainer = targetElement.closest('app-dynamic-viewer');
+      if (!dynamicItemContainer) return;
+
+      const configuracion = dynamicItemContainer.getAttribute('data-configuracion');
+      const sourceId = configuracion || dynamicItemContainer.getAttribute('data-id_DocumentHTMLCSS') || 'unknown-dynamic-content';
+
+      while (targetElement && targetElement !== hostElement && targetElement !== dynamicItemContainer.parentElement) {
+         // Asegurarse que el targetElement está DENTRO del dynamicItemContainer correcto
+        if (!dynamicItemContainer.contains(targetElement)) break;
+
+        if (targetElement.matches('button[data-dynamic-action]')) {
+          const action = targetElement.getAttribute('data-dynamic-action');
+          this.dis.reportClick({
+            action: action || 'unknown_click_action',
+            sourceId: sourceId, // Usar la configuración del item específico
+            clickedElement: targetElement,
+            originalEvent: event
+          });
+          break;
         }
+        targetElement = targetElement.parentElement as HTMLElement;
+      }
+    });
+
+    // Listener para Submit de Formularios (Delegación de eventos en el host)
+    this.unlistenSubmitFn = this.renderer.listen(hostElement, 'submit', (event: Event) => {
+      event.preventDefault();
+      const formElement = event.target as HTMLFormElement;
+      // Buscar el contenedor del componente dinámico específico que originó el evento
+      const dynamicItemContainer = formElement.closest('app-dynamic-viewer');
+      if (!dynamicItemContainer) return;
+      
+      const configuracion = dynamicItemContainer.getAttribute('data-configuracion');
+      const sourceId = configuracion || dynamicItemContainer.getAttribute('data-id_DocumentHTMLCSS') || 'unknown-dynamic-form';
+
+      const formValues = this.dis.extractFormData(formElement);
+      const formName = formElement.name || undefined;
+
+      this.dis.reportFormSubmit({
+        data: formValues,
+        formName: formName,
+        sourceId: sourceId // Usar la configuración del item específico
       });
-
-      // Listener para Submit de Formularios (Delegación de eventos)
-      this.unlistenSubmitFn = this.renderer.listen(innerContentDiv, 'submit', (event: Event) => {
-        event.preventDefault(); // Prevenir el envío HTML tradicional
-        const formElement = event.target as HTMLFormElement;
-        const formValues = this.dis.extractFormData(formElement); // Usar helper del servicio
-        const formName = formElement.name || undefined;
-
-        // Reportar al servicio de interacción
-        this.dis.reportFormSubmit({
-          data: formValues,
-          formName: formName,
-          sourceId: this.data?.configuracion || 'app-root-dynamic-form'
-        });
-      });
-
-    } else {
-      console.warn('AppComponent: No se encontró el div interno en DynamicViewer para adjuntar listeners.');
-    }
+    });
   }
 
+/**
+ * Elimina los event listeners de clic y envío de formularios del contenido dinámico.
+ * Si los listeners están activos, se desactivan y se liberan los recursos asociados.
+ */
   removeEventListenersFromDynamicContent(): void {
     if (this.unlistenClickFn) {
       this.unlistenClickFn();
@@ -156,32 +228,35 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // Métodos para manejar los eventos que vienen del servicio de interacción
+  /**
+   * Manejador de clics de botones dinámicos. Se encarga de procesar los
+   * eventos de clic en botones dinámicos y mostrar una alerta con un mensaje
+   * amigable.
+   * @param payload - Información del clic.
+   */
   private handleServiceClickEvent(payload: DynamicClickPayload): void {
     console.log('AppComponent (manejador de servicio): Clic procesado!', payload);
-    // Aquí va tu lógica específica basada en la acción del clic
     if (payload.action === 'saludarUsuario') {
       alert(`¡Hola desde ${payload.sourceId}! El botón "${payload.clickedElement?.textContent?.trim()}" fue presionado.`);
     }
-    // ... más lógica
   }
 
+  /**
+   * Manejador de eventos de formularios dinámicos. Se encarga de procesar los
+   * eventos de envío de formularios dinámicos y mostrar una alerta con un mensaje
+   * amigable.
+   * @param payload - Información del formulario.
+   */
   private handleServiceFormEvent(payload: DynamicFormDataPayload): void {
     console.log('AppComponent (manejador de servicio): Formulario procesado!', payload);
-    // Aquí va tu lógica para manejar los datos del formulario
     alert(`Datos del formulario "${payload.formName}" de "${payload.sourceId}" recibidos: ${JSON.stringify(payload.data)}`);
-    // this.unServicioQueEnviaAlBackend.enviar(payload.data);
   }
 
   ngOnDestroy() {
-    // Limpiar CSS
-    if (this.dynamicStyleId) {
-      this.dycs.removeCss(this.dynamicStyleId);
-    }
-    // Limpiar listeners del DOM
+    this.dynamicStyleIds.forEach(id => this.dycs.removeCss(id));
+    this.dynamicStyleIds = [];
     this.removeEventListenersFromDynamicContent();
 
-    // Limpiar suscripciones a observables
     this.clickSubscription?.unsubscribe();
     this.formSubscription?.unsubscribe();
   }

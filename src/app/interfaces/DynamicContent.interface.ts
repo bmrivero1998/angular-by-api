@@ -6,6 +6,18 @@ export interface DynamicContentInterface {
 }
 
 
+export interface DynamicApiResponse{
+  ok:boolean,
+  doc:DynamicContentPayload[]
+}
+export interface DynamicContentPayload {
+    url:string,
+    htmlComponent:string,
+    cssComponent:string,
+    id_DocumentHTMLCSS:string
+  }
+
+
 export interface DynamicClickPayload {
   sourceId?: string; // Un identificador opcional para saber de qué contenido dinámico vino el clic
   action: string;    // El nombre de la acción (ej. el 'name' o 'data-action' del botón)

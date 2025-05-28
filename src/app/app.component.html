@@ -1,1 +1,12 @@
-<app-dynamic-viewer #dynamicViewerHost [trustedHtmlContent]="safeHtmlToDisplay"></app-dynamic-viewer>
+<div #dynamicContentHost>
+    <app-dynamic-viewer
+      *ngFor="let content of displayableContents; let i = index"
+      [trustedHtmlContent]="content.safeHtml"
+      [attr.data-configuracion]="content.configuracion"
+      [attr.data-id_DocumentHTMLCSS]="content.otros"
+      [attr.data-index]="i"> </app-dynamic-viewer>
+  </div>
+  
+  <div *ngIf="!displayableContents || displayableContents.length === 0">
+    <p>No hay contenido dinámico para mostrar.</p>
+  </div>
