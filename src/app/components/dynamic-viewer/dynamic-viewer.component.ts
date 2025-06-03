@@ -481,6 +481,9 @@ export class DynamicViewerComponent
               isDisabled =
                 this.dynamicForm.invalid || this.dynamicForm.pristine;
               break;
+              case 'formIsEmpty':
+                isDisabled = true
+                break;
             default:
               console.warn(`Condición desconocida: ${config.disableWhen}`);
           }

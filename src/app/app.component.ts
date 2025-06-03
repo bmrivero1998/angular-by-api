@@ -62,19 +62,6 @@ export class AppComponent implements OnInit, OnDestroy {
             }
           }
         }
-
-        if (fullNameControl && emailControl) {
-          if (!fullNameControl.value) {
-            if (emailControl.enabled) {
-              emailControl.disable();
-            }
-          } else {
-            if (emailControl.disabled) {
-              emailControl.setValue('carlos.slim@correo.com');
-              emailControl.enable();
-            }
-          }
-        }
       }
       const postalCodeForm = this.parentForm.get(
         'lookupPostalCodeForm',
@@ -113,6 +100,7 @@ export class AppComponent implements OnInit, OnDestroy {
       `AppComponent: Formulario ${payload.formId} enviado desde viewer con datos:`,
       payload.data,
     );
+    console.log(this.parentForm.value)
   }
 
   handleViewerActionClick(payload: DynamicClickPayload): void {
