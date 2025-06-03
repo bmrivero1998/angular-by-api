@@ -9,25 +9,25 @@ export interface ApiDrivenContent {
   formId?: string;               // Un ID específico para el formulario (si es diferente de id_DocumentHTMLCSS)
   formMappings?: FormFieldMapping[]; // Los mapeos para el FormDomSynchronizerService
   formInitialData?: any;         // Datos iniciales para el FormGroup
-  validators?: any[];            // Podrías añadir también aquí los validadores si vinieran de la API
-  otros?: any;      
-  buttonConfigs?: ButtonConfig[];             // Puedes agregar más propiedades si es necesario
+  validators?: any[];           // Validadores para el FormGroup
+  otros?: any;                  // Otros datos adicionales
+  buttonConfigs?: ButtonConfig[]; // Configuración de botones
 }
 
 export interface DisplayableDynamicContent extends ApiDrivenContent {
-  safeHtml: SafeHtml;
+  safeHtml: SafeHtml; // Contenido HTML seguro
   styleId?: string; // ID generado para la etiqueta <style>
 }
 
 export interface DynamicApiResponse{
-  ok:boolean,
-  doc:DynamicContentPayload[]
+  ok:boolean, // Indica si la petición fue exitosa
+  doc:DynamicContentPayload[] // Un array de objetos DynamicContentPayload
 }
 export interface DynamicContentPayload {
-    url:string,
-    htmlComponent:string,
-    cssComponent:string,
-    id_DocumentHTMLCSS:string
+    url:string, // La URL de la API
+    htmlComponent:string, // El HTML crudo
+    cssComponent:string, // El CSS para este contenido
+    id_DocumentHTMLCSS:string // Un ID único para este bloque de contenido/CSS
   }
 
 
