@@ -23,7 +23,6 @@ export class DynamicInteractionService {
    * @param payload - Información sobre el clic.
    */
   reportClick(payload: DynamicClickPayload): void {
-    console.log('DynamicInteractionService: Clic reportado', payload);
     this.clickActionSource.next(payload);
   }
 
@@ -33,7 +32,6 @@ export class DynamicInteractionService {
    * @param payload - Datos del formulario.
    */
   reportFormSubmit(payload: DynamicFormDataPayload): void {
-    console.log('DynamicInteractionService: Envío de formulario reportado', payload);
     this.formDataSubmitedSource.next(payload);
   }
 

@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { map, Observable} from 'rxjs';
-import { DynamicApiResponse, DynamicContentInterface } from '../interfaces/DynamicContent.interface';
+import { ApiDrivenContent, DynamicApiResponse,  } from '../interfaces/DynamicContent.interface';
 import { HttpClient } from '@angular/common/http';
+import { MockApiResponseData } from '../mocks/getContent.mock';
 
 @Injectable({
   providedIn: 'root'
@@ -21,19 +22,24 @@ export class DynamicContentService {
    * El contenido se devuelve como un Observable de un array de objetos DynamicContentInterface,
    * que incluyen la configuración, el HTML y los estilos CSS para cada contenido.
    * Si no se obtiene respuesta, se devuelve un array vacío.
-   * @returns Observable<DynamicContentInterface[]>
+   * @returns Observable<ApiDrivenContent[]>
    */
-  getContent(): Observable<DynamicContentInterface[]> {
+  getContent(): Observable<ApiDrivenContent[]> {
+    const mock = MockApiResponseData;
     return this.http.get<DynamicApiResponse>(this.apiUrl).pipe(
       map(response => { // Usa el operador map aquí
-        if (response && response.doc) {
-          return response.doc.map(item => ({
+        if (mock && mock.doc) {
+          return mock.doc.map(item => ({
             configuracion: item.url,
-            plantillaHTML: item.htmlComponent,
-            css: item.cssComponent,
+            plantillaHTML: item.plantillaHTML,
+            css: item.css,
             id_DocumentHTMLCSS: item.id_DocumentHTMLCSS,
+            formId: item.formId,
+            formMappings: item.formMappings,
+            formInitialData: item.formInitialData,
+            buttonConfigs: item.buttonsConfig, 
             otros: {} // Puedes agregar más propiedades si es necesario
-          } as DynamicContentInterface)); 
+          } as ApiDrivenContent)); 
         }
         return []; 
       })

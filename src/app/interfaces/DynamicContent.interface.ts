@@ -1,11 +1,23 @@
-export interface DynamicContentInterface {
-  configuracion: string; // Configuration details, e.g., for API calls or settings
-  plantillaHTML: string; // HTML template for the dynamic content
-  css: string; // CSS styles for the dynamic content
-  id_DocumentHTMLCSS: string; // Unique identifier for the HTML/CSS document
-  otros?: { [key: string]: any }; // Additional properties
+import { SafeHtml } from "@angular/platform-browser";
+import { ButtonConfig, FormFieldMapping } from "../models/form-field-mapping.model";
+
+export interface ApiDrivenContent {
+  plantillaHTML: string;        // El HTML crudo
+  css?: string;                 // El CSS para este contenido
+  id_DocumentHTMLCSS: string;  // Un ID único para este bloque de contenido/CSS
+  configuracion?: string;        // Configuración adicional, como un ID de formulario o nombre
+  formId?: string;               // Un ID específico para el formulario (si es diferente de id_DocumentHTMLCSS)
+  formMappings?: FormFieldMapping[]; // Los mapeos para el FormDomSynchronizerService
+  formInitialData?: any;         // Datos iniciales para el FormGroup
+  validators?: any[];            // Podrías añadir también aquí los validadores si vinieran de la API
+  otros?: any;      
+  buttonConfigs?: ButtonConfig[];             // Puedes agregar más propiedades si es necesario
 }
 
+export interface DisplayableDynamicContent extends ApiDrivenContent {
+  safeHtml: SafeHtml;
+  styleId?: string; // ID generado para la etiqueta <style>
+}
 
 export interface DynamicApiResponse{
   ok:boolean,

@@ -21,7 +21,6 @@ export class DynamicInyectCssService {
     this.renderer.setAttribute(styleElement, 'id', styleId);
     this.renderer.appendChild(styleElement, this.renderer.createText(cssContent));
     this.renderer.appendChild(this.document.head, styleElement);
-    console.log(`CSS inyectado con ID: ${styleId}`);
   }
 
 
@@ -29,7 +28,6 @@ export class DynamicInyectCssService {
     const styleElement = this.document.getElementById(styleId);
     if (styleElement) {
       this.renderer.removeChild(this.document.head, styleElement);
-      console.log(`CSS removido con ID: ${styleId}`);
     }
   }
 
