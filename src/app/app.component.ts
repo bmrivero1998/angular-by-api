@@ -36,7 +36,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.parentFormValidation();
   }
 
-  private parentFormValidation(): void {
+  private parentFormValidation(): void { //TODO: revisar la recursividad al momento de hacer cambios en el formulario por parte del codigo
     this.parentForm.valueChanges.subscribe(() => {
       const userRegistrationForm = this.parentForm.get(
         'userRegistration',
@@ -47,11 +47,10 @@ export class AppComponent implements OnInit, OnDestroy {
           userRegistrationForm.get('confirmPassword');
         const emailControl = userRegistrationForm.get('email');
         const fullNameControl = userRegistrationForm.get('fullName');
-
         if (passwordControl && confirmPasswordControl) {
           if (passwordControl.value === confirmPasswordControl.value) {
             if (confirmPasswordControl.hasError('passwordMismatch')) {
-              confirmPasswordControl.setErrors(null, { emitEvent: false });
+              confirmPasswordControl.setErrors(null);
             }
           } else {
             if (!confirmPasswordControl.hasError('passwordMismatch')) {
