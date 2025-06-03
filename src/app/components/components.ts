@@ -1,5 +1,3 @@
-import { DynamicViewerComponent } from "./dynamic-viewer/dynamic-viewer.component";
+import { DynamicViewerComponent } from './dynamic-viewer/dynamic-viewer.component';
 
-export const COMPONENTS = [
-    DynamicViewerComponent,
-]
+export const COMPONENTS = [DynamicViewerComponent];

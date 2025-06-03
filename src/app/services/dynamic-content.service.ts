@@ -1,21 +1,19 @@
 import { Injectable } from '@angular/core';
-import { map, Observable} from 'rxjs';
-import { ApiDrivenContent, DynamicApiResponse,  } from '../interfaces/DynamicContent.interface';
+import { map, Observable } from 'rxjs';
+import {
+  ApiDrivenContent,
+  DynamicApiResponse,
+} from '../interfaces/DynamicContent.interface';
 import { HttpClient } from '@angular/common/http';
 import { MockApiResponseData } from '../mocks/getContent.mock';
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class DynamicContentService {
   private readonly apiUrl = 'http://localhost:3000/api/html-css/'; // Replace with your API URL
 
-
-  constructor(
-    private readonly http: HttpClient,
-  ) { 
-  }
-
+  constructor(private readonly http: HttpClient) {}
 
   /**
    * Realiza una petición GET a la API para obtener el contenido dinámico.
@@ -27,22 +25,26 @@ export class DynamicContentService {
   getContent(): Observable<ApiDrivenContent[]> {
     const mock = MockApiResponseData;
     return this.http.get<DynamicApiResponse>(this.apiUrl).pipe(
-      map(response => { // Usa el operador map aquí
+      map((response) => {
+        // Usa el operador map aquí
         if (mock && mock.doc) {
-          return mock.doc.map(item => ({
-            configuracion: item.url,
-            plantillaHTML: item.plantillaHTML,
-            css: item.css,
-            id_DocumentHTMLCSS: item.id_DocumentHTMLCSS,
-            formId: item.formId,
-            formMappings: item.formMappings,
-            formInitialData: item.formInitialData,
-            buttonConfigs: item.buttonsConfig, 
-            otros: {} // Puedes agregar más propiedades si es necesario
-          } as ApiDrivenContent)); 
+          return mock.doc.map(
+            (item) =>
+              ({
+                configuracion: item.url,
+                plantillaHTML: item.plantillaHTML,
+                css: item.css,
+                id_DocumentHTMLCSS: item.id_DocumentHTMLCSS,
+                formId: item.formId,
+                formMappings: item.formMappings,
+                formInitialData: item.formInitialData,
+                buttonConfigs: item.buttonsConfig,
+                otros: {}, // Puedes agregar más propiedades si es necesario
+              }) as ApiDrivenContent,
+          );
         }
-        return []; 
-      })
+        return [];
+      }),
     );
   }
 }

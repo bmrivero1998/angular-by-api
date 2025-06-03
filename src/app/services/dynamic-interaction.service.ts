@@ -1,21 +1,25 @@
 import { Injectable } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
-import { DynamicClickPayload, DynamicFormDataPayload } from '../interfaces/DynamicContent.interface';
+import {
+  DynamicClickPayload,
+  DynamicFormDataPayload,
+} from '../interfaces/DynamicContent.interface';
 
 @Injectable({
-  providedIn: 'root' 
+  providedIn: 'root',
 })
 export class DynamicInteractionService {
-
   // Subject para emitir eventos de clic
   private clickActionSource = new Subject<DynamicClickPayload>();
-  public clickAction$: Observable<DynamicClickPayload> = this.clickActionSource.asObservable();
+  public clickAction$: Observable<DynamicClickPayload> =
+    this.clickActionSource.asObservable();
 
   // Subject para emitir datos de formularios
   private formDataSubmitedSource = new Subject<DynamicFormDataPayload>();
-  public formDataSubmitted$: Observable<DynamicFormDataPayload> = this.formDataSubmitedSource.asObservable();
+  public formDataSubmitted$: Observable<DynamicFormDataPayload> =
+    this.formDataSubmitedSource.asObservable();
 
-  constructor() { }
+  constructor() {}
 
   /**
    * Método para ser llamado cuando se detecta un clic en un elemento dinámico.
