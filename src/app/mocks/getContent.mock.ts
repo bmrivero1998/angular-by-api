@@ -7,11 +7,15 @@ interface MockApiItem {
   url: string;
   plantillaHTML: string;
   css?: string;
+  htmlComponent?:any;
+  cssComponent?:any;
   id_DocumentHTMLCSS: string;
   formId?: string;
   formMappings?: FormFieldMapping[];
   formInitialData?: any;
-  buttonsConfig?: ButtonConfig[];
+  buttonConfigs?: ButtonConfig[];
+  buttonsConfig?:ButtonConfig[];
+  validators?: any;
 }
 
 export const MockApiResponseData: { ok: boolean; doc: MockApiItem[] } = {
@@ -42,7 +46,7 @@ export const MockApiResponseData: { ok: boolean; doc: MockApiItem[] } = {
         },
       ],
       formInitialData: {},
-      buttonsConfig: [
+      buttonConfigs: [
         {
           selector: '#btnSearchPostalCodeApi',
           disableWhen: 'formIsInvalid',
@@ -232,8 +236,9 @@ export const MockApiResponseData: { ok: boolean; doc: MockApiItem[] } = {
         }, // Para checkboxes 'required' significa 'requiredTrue'
       ],
       formInitialData: {},
-      buttonsConfig: [
+      buttonConfigs: [
         { selector: '#btnSubmitRegistration', disableWhen: 'formIsInvalid' },
+        { selector: '#btnClearRegistrationForm', disableWhen: 'formIsEmpty' },
       ],
     },
   ],

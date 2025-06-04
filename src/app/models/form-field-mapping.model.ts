@@ -4,7 +4,7 @@ export interface FormFieldMapping {
   controlName: string; // Nombre del FormControl en tu FormGroup (ej. 'username')
   domSelector: string; // Cómo encontrar el campo en el HTML de la API (ej. '#inputApiUsuario', 'input[name="usuario"]')
   eventType?: string; // Evento del DOM a escuchar para cambios (ej. 'input', 'change'; por defecto podría ser 'input')
-  errorDisplaySelector?: string; // Opcional: Selector para un elemento donde mostrar mensajes de error para este campo
+  errorDisplaySelector?: string | null; // Opcional: Selector para un elemento donde mostrar mensajes de error para este campo
   defaultValue?: any; // Valor por defecto para el campo, si es necesario
   validatorConfig?: Array<{
     type: string; // Tipo de validador (ej. 'required', 'pattern')

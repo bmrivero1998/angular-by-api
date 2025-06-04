@@ -36,7 +36,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.parentFormValidation();
   }
 
-  private parentFormValidation(): void { //TODO: revisar la recursividad al momento de hacer cambios en el formulario por parte del codigo
+  private parentFormValidation(): void {
+    //TODO: revisar la recursividad al momento de hacer cambios en el formulario por parte del codigo
     this.parentForm.valueChanges.subscribe(() => {
       const userRegistrationForm = this.parentForm.get(
         'userRegistration',
@@ -99,7 +100,7 @@ export class AppComponent implements OnInit, OnDestroy {
       `AppComponent: Formulario ${payload.formId} enviado desde viewer con datos:`,
       payload.data,
     );
-    console.log(this.parentForm.value)
+    console.log(this.parentForm.value);
   }
 
   handleViewerActionClick(payload: DynamicClickPayload): void {

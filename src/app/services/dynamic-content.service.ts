@@ -11,8 +11,8 @@ import { MockApiResponseData } from '../mocks/getContent.mock';
   providedIn: 'root',
 })
 export class DynamicContentService {
-  private readonly apiUrl = 'http://localhost:3000/api/html-css/'; // Replace with your API URL
-
+  //private readonly apiUrl = 'http://localhost:3001/api/v2/vacancies';
+  private readonly apiUrl = 'http://localhost:3000/api/html-css/'; 
   constructor(private readonly http: HttpClient) {}
 
   /**
@@ -27,18 +27,21 @@ export class DynamicContentService {
     return this.http.get<DynamicApiResponse>(this.apiUrl).pipe(
       map((response) => {
         // Usa el operador map aquí
-        if (mock && mock.doc) {
-          return mock.doc.map(
+
+        if (response && response.doc) {
+          console.log(response.doc);
+          return response.doc.map(
             (item) =>
               ({
                 configuracion: item.url,
-                plantillaHTML: item.plantillaHTML,
-                css: item.css,
+                plantillaHTML: item?.plantillaHTML || item.htmlComponent,
+                css: item?.css || item.cssComponent,
                 id_DocumentHTMLCSS: item.id_DocumentHTMLCSS,
                 formId: item.formId,
                 formMappings: item.formMappings,
                 formInitialData: item.formInitialData,
-                buttonConfigs: item.buttonsConfig,
+                buttonConfigs: item?.buttonConfigs ?? item?.buttonsConfig,
+                validators: item.validators,
                 otros: {}, // Puedes agregar más propiedades si es necesario
               }) as ApiDrivenContent,
           );

@@ -471,21 +471,121 @@ export class DynamicViewerComponent
           isDisabled = config.disableWhen(this.dynamicForm);
         } else if (typeof config.disableWhen === 'string') {
           switch (config.disableWhen) {
-            case 'formIsInvalid':
+            case 'formIsInvalid': 
               isDisabled = this.dynamicForm.invalid;
               break;
+            case 'formIsValid': 
+              isDisabled = this.dynamicForm.valid;
+              break;
+
             case 'formIsPristine':
               isDisabled = this.dynamicForm.pristine;
               break;
+            case 'formIsDirty': 
+              isDisabled = this.dynamicForm.dirty;
+              break;
+
+            case 'formIsTouched':
+              isDisabled = this.dynamicForm.touched;
+              break;
+            case 'formIsUntouched': 
+              isDisabled = this.dynamicForm.untouched;
+              break;
+
+            case 'formIsPending': 
+              isDisabled = this.dynamicForm.pending;
+              break;
+
             case 'formIsInvalidOrPristine':
               isDisabled =
                 this.dynamicForm.invalid || this.dynamicForm.pristine;
               break;
-              case 'formIsEmpty':
-                isDisabled = true
-                break;
+            case 'formIsInvalidOrUntouched': 
+              isDisabled =
+                this.dynamicForm.invalid || this.dynamicForm.untouched;
+              break;
+
+            case 'formIsValidAndDirty': 
+              isDisabled = this.dynamicForm.valid && this.dynamicForm.dirty;
+              break;
+            case 'formIsInvalidAndTouched': 
+              isDisabled = this.dynamicForm.invalid && this.dynamicForm.touched;
+              break;
+
+            case 'formIsEmpty':
+              {
+                let isEffectivelyEmpty = true;
+                if (
+                  this.dynamicForm.value &&
+                  typeof this.dynamicForm.value === 'object'
+                ) {
+                  const formValues = this.dynamicForm.value;
+                  const controlKeys = Object.keys(formValues);
+                  if (controlKeys.length === 0) {
+                    isEffectivelyEmpty = true; 
+                  } else {
+                    isEffectivelyEmpty = controlKeys.every((key) => {
+                      const value = formValues[key];
+                      return (
+                        value === null ||
+                        value === undefined ||
+                        (typeof value === 'string' && value.trim() === '')
+                      );
+                    });
+                  }
+                } else {
+                  isEffectivelyEmpty = true;
+                }
+                isDisabled = isEffectivelyEmpty;
+              }
+              break;
+            case 'formIsNotEmpty':
+              {
+                let isEffectivelyEmpty = true;
+                if (
+                  this.dynamicForm.value &&
+                  typeof this.dynamicForm.value === 'object'
+                ) {
+                  const formValues = this.dynamicForm.value;
+                  const controlKeys = Object.keys(formValues);
+                  if (controlKeys.length === 0) {
+                    isEffectivelyEmpty = true;
+                  } else {
+                    isEffectivelyEmpty = controlKeys.every((key) => {
+                      const value = formValues[key];
+                      return (
+                        value === null ||
+                        value === undefined ||
+                        (typeof value === 'string' && value.trim() === '')
+                      );
+                    });
+                  }
+                } else {
+                  isEffectivelyEmpty = true;
+                }
+                isDisabled = !isEffectivelyEmpty; 
+              }
+              break;
+
+            case 'formItselfIsDisabled':
+              isDisabled = this.dynamicForm.disabled;
+              break;
+            case 'formItselfIsEnabled': 
+              isDisabled = this.dynamicForm.enabled;
+              break;
+
+            case 'alwaysDisable':
+              isDisabled = true;
+              break;
+            case 'neverDisable':
+              isDisabled = false;
+              break;
+
             default:
-              console.warn(`Condición desconocida: ${config.disableWhen}`);
+              console.warn(
+                `Condición desconocida para 'disableWhen': ${config.disableWhen}. El comportamiento de deshabilitación puede no ser el esperado.`,
+              );
+              break;
           }
         }
         if (config.disableWhen !== undefined) {
