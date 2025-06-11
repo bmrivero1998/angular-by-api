@@ -11,6 +11,8 @@ export interface FormFieldMapping {
     value?: any; // Valor adicional para el validador (ej. patrón regex)
     message: string; // Mensaje de error a mostrar si la validación falla
   }>;
+  keyFilter?: string; // Filtro de clave para el campo, si es necesario
+  inputMask?: string; // Máscara de entrada para el campo, si es necesario
 }
 
 export interface ButtonConfig {

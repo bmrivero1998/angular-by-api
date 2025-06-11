@@ -24,7 +24,7 @@ export const MockApiResponseData: { ok: boolean; doc: MockApiItem[] } = {
     {
       url: 'http://localhost:4200/postal-code-lookup',
       plantillaHTML:
-        '<div class="postal-code-search-container p-4 shadow-sm"><h2 class="mb-4 text-primary text-center fw-light">Buscar por Código Postal</h2><form name="postalCodeSearchForm" data-dynamic-form-id="postalSearch" id="postalCodeApiForm"><div><label for="postalCodeInput" class="form-label">Tu Código Postal (C.P.):</label><input type="text" id="postalCodeInput" name="postalCode" class="form-control form-control-lg" placeholder="Ej. 06500" required pattern="[0-9]{5}" title="Ingresa 5 dígitos del código postal"><div id="postalCodeInput-error" class="text-danger mt-1" style="font-size: 0.875em;"></div></div><div class="d-grid mt-4"><button type="submit" id="btnSearchPostalCodeApi" name="btnSearchPostalCode" class="btn btn-primary btn-lg" data-dynamic-action="lookupPostalCode">Buscar</button></div></form></div>',
+        '<div class="postal-code-search-container p-4 shadow-sm"><h2 class="mb-4 text-primary text-center fw-light">Buscar por Código Postal</h2><form name="postalCodeSearchForm" data-dynamic-form-id="postalSearch" id="postalCodeApiForm"><div><label for="postalCodeInput" class="form-label">Tu Código Postal (C.P.):</label><input type="text" id="postalCodeInput" name="postalCode" class="form-control form-control-lg" placeholder="Ej. 06500" required pattern="[0-9]{5}" title="Ingresa 5 dígitos del código postal" maxlength="5"><div id="postalCodeInput-error" class="text-danger mt-1" style="font-size: 0.875em;"></div></div><div class="d-grid mt-4"><button type="submit" id="btnSearchPostalCodeApi" name="btnSearchPostalCode" class="btn btn-primary btn-lg" data-dynamic-action="lookupPostalCode">Buscar</button></div></form></div>',
       css: '.postal-code-search-container { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #ffffff; max-width: 400px; margin: 40px auto; border-radius: 0.375rem; } .postal-code-search-container h2.fw-light { font-weight: 300 !important; } .postal-code-search-container input[type="text"].form-control:focus { border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); } #postalCodeInput-error:not(:empty) { padding-top: .25rem; } .postal-code-search-container .btn-lg { padding-top: 0.75rem; padding-bottom: 0.75rem; }',
       id_DocumentHTMLCSS: '68377bceb0d57987a6550932',
       formId: 'lookupPostalCodeForm',
@@ -43,6 +43,8 @@ export const MockApiResponseData: { ok: boolean; doc: MockApiItem[] } = {
               message: 'Debe ser un código postal de 5 dígitos.',
             },
           ],
+          keyFilter: 'int',
+          inputMask: '99999', 
         },
       ],
       formInitialData: {},
@@ -156,6 +158,8 @@ export const MockApiResponseData: { ok: boolean; doc: MockApiItem[] } = {
               message: 'El nombre debe tener al menos 3 caracteres.',
             },
           ],
+          keyFilter: 'alpha', // Permite solo letras
+          inputMask: '**** **** ***** **********', // Ajusta según el formato que necesites 
         },
         {
           controlName: 'email',

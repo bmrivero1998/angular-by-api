@@ -29,8 +29,7 @@ export class DynamicContentService {
         // Usa el operador map aquí
 
         if (response && response.doc) {
-          console.log(response.doc);
-          return response.doc.map(
+          return mock.doc.map(
             (item) =>
               ({
                 configuracion: item.url,
