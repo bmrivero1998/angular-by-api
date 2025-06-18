@@ -5,8 +5,8 @@ import {
 } from '../models/form-field-mapping.model';
 
 export interface ApiDrivenContent {
-  plantillaHTML: string; // El HTML crudo
-  css?: string; // El CSS para este contenido
+  htmlComponent: string; // El HTML crudo
+  cssComponent?: string; // El CSS para este contenido
   id_DocumentHTMLCSS: string; // Un ID único para este bloque de contenido/CSS
   configuracion?: string; // Configuración adicional, como un ID de formulario o nombre
   formId?: string; // Un ID específico para el formulario (si es diferente de id_DocumentHTMLCSS)
@@ -30,8 +30,6 @@ export interface DynamicContentPayload {
   url: string; // La URL de la API
   htmlComponent?: string; // El HTML crudo
   cssComponent?: string; // El CSS para este contenido
-  plantillaHTML?: string; // El HTML crudo
-  css?: string; // El CSS para este contenido
   id_DocumentHTMLCSS: string; // Un ID único para este bloque de contenido/CSS
   formId?: string; // Un ID específico para el formulario (si es diferente de id_DocumentHTMLCSS)
   formMappings?: FormFieldMapping[]; // Los mapeos para el FormDomSynchronizerService
@@ -39,7 +37,6 @@ export interface DynamicContentPayload {
   validators?: any[]; // Validadores para el FormGroup
   otros?: any; // Otros datos adicionales
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
-  buttonsConfig?:ButtonConfig[]
 }
 
 export interface DynamicClickPayload {

@@ -8,6 +8,8 @@ import { DynamicViewerComponent } from './components/dynamic-viewer/dynamic-view
 import { CommonModule } from '@angular/common';
 import { DynamicContentService } from './services/dynamic-content.service';
 import { FormGroup } from '@angular/forms';
+import { RouterOutlet } from '@angular/router';
+import { LoaderComponent } from './components/loader/loader.component';
 
 export interface DisplayableInAppComponent extends ApiDrivenContent {
   // Hereda de ApiDrivenContent
@@ -17,100 +19,8 @@ export interface DisplayableInAppComponent extends ApiDrivenContent {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DynamicViewerComponent, CommonModule], // DynamicViewerComponent importado aquí
+  imports: [CommonModule, RouterOutlet, LoaderComponent], // DynamicViewerComponent importado aquí
   templateUrl: './app.component.html', // Ver abajo
   styleUrl: './app.component.css',
 })
-export class AppComponent implements OnInit, OnDestroy {
-  public displayableItems: DisplayableInAppComponent[] = [];
-  public parentForm: FormGroup = new FormGroup({});
-
-  constructor(
-    private dcs: DynamicContentService,
-    private sanitizer: DomSanitizer,
-    private cdr: ChangeDetectorRef,
-  ) {}
-
-  ngOnInit() {
-    this.loadDynamicContent();
-    this.parentFormValidation();
-  }
-
-  private parentFormValidation(): void {
-    //TODO: revisar la recursividad al momento de hacer cambios en el formulario por parte del codigo
-    this.parentForm.valueChanges.subscribe(() => {
-      const userRegistrationForm = this.parentForm.get(
-        'userRegistration',
-      ) as FormGroup;
-      if (userRegistrationForm) {
-        const passwordControl = userRegistrationForm.get('password'); // Es 'password', no 'passwordValue'
-        const confirmPasswordControl =
-          userRegistrationForm.get('confirmPassword');
-        const emailControl = userRegistrationForm.get('email');
-        const fullNameControl = userRegistrationForm.get('fullName');
-        if (passwordControl && confirmPasswordControl) {
-          if (passwordControl.value === confirmPasswordControl.value) {
-            if (confirmPasswordControl.hasError('passwordMismatch')) {
-              confirmPasswordControl.setErrors(null);
-            }
-          } else {
-            if (!confirmPasswordControl.hasError('passwordMismatch')) {
-              confirmPasswordControl.setErrors(
-                { ...confirmPasswordControl.errors, passwordMismatch: true },
-                { emitEvent: false },
-              );
-            }
-          }
-        }
-      }
-      const postalCodeForm = this.parentForm.get(
-        'lookupPostalCodeForm',
-      ) as FormGroup;
-      if (postalCodeForm) {
-        const postalCodeControl = postalCodeForm.get('postalCode');
-        if (postalCodeControl) {
-        }
-      }
-    });
-  }
-
-  private loadDynamicContent(): void {
-    this.dcs.getContent().subscribe({
-      next: (apiResponseData: ApiDrivenContent[]) => {
-        if (!apiResponseData || apiResponseData.length === 0) {
-          this.displayableItems = [];
-          this.cdr.detectChanges();
-          return;
-        }
-
-        this.displayableItems = apiResponseData.map((item) => ({
-          ...item,
-          safeHtml: this.sanitizer.bypassSecurityTrustHtml(item.plantillaHTML),
-        }));
-
-        this.cdr.detectChanges();
-      },
-      error: (err) => {
-        /* ... manejo de error ... */
-      },
-    });
-  }
-  handleViewerFormSubmission(payload: { formId?: string; data: any }): void {
-    console.log(
-      `AppComponent: Formulario ${payload.formId} enviado desde viewer con datos:`,
-      payload.data,
-    );
-    console.log(this.parentForm.value);
-  }
-
-  handleViewerActionClick(payload: DynamicClickPayload): void {
-    if (
-      payload.action === 'clearRegistrationForm' &&
-      payload.sourceId === 'userRegistration'
-    ) {
-      this.parentForm.get('userRegistration')?.reset();
-    }
-  }
-
-  ngOnDestroy() {}
-}
+export class AppComponent {}

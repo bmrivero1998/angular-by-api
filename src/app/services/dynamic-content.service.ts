@@ -11,8 +11,8 @@ import { MockApiResponseData } from '../mocks/getContent.mock';
   providedIn: 'root',
 })
 export class DynamicContentService {
-  //private readonly apiUrl = 'http://localhost:3001/api/v2/vacancies';
-  private readonly apiUrl = 'http://localhost:3000/api/html-css/'; 
+  private readonly apiUrl = 'http://localhost:3001/api/v2/vacancies';
+  //private readonly apiUrl = 'http://localhost:3000/api/html-css/';
   constructor(private readonly http: HttpClient) {}
 
   /**
@@ -22,31 +22,31 @@ export class DynamicContentService {
    * Si no se obtiene respuesta, se devuelve un array vacío.
    * @returns Observable<ApiDrivenContent[]>
    */
-  getContent(): Observable<ApiDrivenContent[]> {
+  getContent(id: string): Observable<ApiDrivenContent[]> {
     const mock = MockApiResponseData;
-    return this.http.get<DynamicApiResponse>(this.apiUrl).pipe(
+    return this.http.get<DynamicApiResponse>(this.apiUrl + '/' + id).pipe(
       map((response) => {
         // Usa el operador map aquí
-
         if (response && response.doc) {
-          return mock.doc.map(
+          const mapper: ApiDrivenContent[] = response.doc.map(
             (item) =>
               ({
-                configuracion: item.url,
-                plantillaHTML: item?.plantillaHTML || item.htmlComponent,
-                css: item?.css || item.cssComponent,
-                id_DocumentHTMLCSS: item.id_DocumentHTMLCSS,
-                formId: item.formId,
-                formMappings: item.formMappings,
-                formInitialData: item.formInitialData,
-                buttonConfigs: item?.buttonConfigs ?? item?.buttonsConfig,
-                validators: item.validators,
+                configuracion: item?.url,
+                htmlComponent: item?.htmlComponent,
+                cssComponent: item?.cssComponent,
+                id_DocumentHTMLCSS: item?.id_DocumentHTMLCSS,
+                formId: item?.formId,
+                formMappings: item?.formMappings,
+                formInitialData: item?.formInitialData,
+                buttonConfigs: item?.buttonConfigs,
+                validators: item?.validators,
                 otros: {}, // Puedes agregar más propiedades si es necesario
-              }) as ApiDrivenContent,
+              } as ApiDrivenContent)
           );
+          return mapper;
         }
         return [];
-      }),
+      })
     );
   }
 }
