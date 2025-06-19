@@ -44,6 +44,9 @@ export interface DynamicClickPayload {
   action: string; // El nombre de la acción (ej. el 'name' o 'data-action' del botón)
   clickedElement?: HTMLElement; // El elemento HTML que fue clickeado (opcional)
   originalEvent?: Event; // El evento original del DOM (opcional)
+  payload?: any; // Cualquier dato adicional que se quiera enviar con el clic
+  formId?: string; // Un ID de formulario asociado al clic, si aplica
+  formData?: { [key: string]: any }; // Datos del formulario asociados al clic, si aplica
 }
 
 export interface DynamicFormDataPayload {
