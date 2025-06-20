@@ -5,11 +5,13 @@
   >
     <app-dynamic-viewer
       [contentId]="item.id_DocumentHTMLCSS"
+      [formId]="item.formId || item.id_DocumentHTMLCSS"
       [htmlContentString]="item.htmlComponent"
       [cssContentString]="item.cssComponent"
       [dataBindings]="item.dataBindings"
       [formMappings]="item.formMappings"
       [buttonConfigs]="item.buttonConfigs"
+      [parentForm]="formGroup"
       (actionClicked)="handleViewerActionClick($event)"
     >
     </app-dynamic-viewer>

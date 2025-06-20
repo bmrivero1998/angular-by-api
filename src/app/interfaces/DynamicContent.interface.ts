@@ -16,6 +16,7 @@ export interface ApiDrivenContent {
   otros?: any; // Otros datos adicionales
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
   dataBindings?: DataBinding[]; // Mapeos de datos para actualizar el DOM
+  tableBindings?: TableBinding[];
 }
 
 export interface DataBinding {
@@ -44,6 +45,7 @@ export interface DynamicContentPayload {
   otros?: any; // Otros datos adicionales
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
   dataBindings?: DataBinding[]; // Mapeos de datos para actualizar el DOM
+  tableBindings?: TableBinding[]; // Mapeos de tablas para renderizar datos
 }
 
 export interface DynamicClickPayload {
@@ -60,4 +62,23 @@ export interface DynamicFormDataPayload {
   sourceId?: string; // Un identificador opcional para el origen del formulario
   formName?: string; // El 'name' del formulario, si lo tiene
   data: { [key: string]: any }; // Los datos del formulario como un objeto clave-valor
+}
+
+export interface TableBindingAction {
+  label: string; // Texto del botón (ej. 'Editar')
+  action: string; // La acción a emitir (ej. 'edit-user')
+  cssClass?: string; // Clases CSS para el botón (ej. 'btn btn-sm btn-primary')
+}
+
+export interface TableBinding {
+  tableSelector: string; // El selector CSS para encontrar la <table> en el htmlComponent
+  columns: TableBindingColumn[]; // La definición de las columnas
+  data: any[]; // El array de objetos a renderizar
+  actions?: TableBindingAction[]; // Opcional: acciones para cada fila
+}
+
+export interface TableBindingColumn {
+  key: string; // La clave del objeto de datos (ej. 'firstName')
+  header: string; // El texto que se mostrará en el <thead> (ej. 'Nombre')
+  isHtml?: boolean; // Opcional: si el contenido es HTML y no texto plano
 }

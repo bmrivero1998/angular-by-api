@@ -42,6 +42,7 @@ export class DynamicContentService {
                 validators: item?.validators,
                 otros: {},
                 dataBindings: item?.dataBindings,
+                tableBindings: item?.tableBindings,
               } as ApiDrivenContent)
           );
           return mapper;
