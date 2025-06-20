@@ -85,6 +85,62 @@ export class PaginaPrincipalComponent implements OnInit, OnDestroy {
       `AppComponent: Acción ${payload.action} clickeada desde viewer con datos:`,
       payload
     );
+    this.realizarModificiacionDataBlindings();
+  }
+
+  realizarModificiacionDataBlindings(): void {
+    const headerComponent = this.displayableItems.find(
+      (c) => c.id_DocumentHTMLCSS === 'header-001'
+    );
+
+    if (headerComponent && headerComponent.dataBindings) {
+      const userBinding = headerComponent.dataBindings.find(
+        (b) => b.selector === 'username-display'
+      );
+
+      if (userBinding) {
+        userBinding.value = this.generarNombreAleatorio();
+
+        headerComponent.dataBindings = [...headerComponent.dataBindings];
+
+        this.displayableItems = [...this.displayableItems];
+      }
+    }
+  }
+
+  /**
+   * Genera un nombre y apellido aleatorio de una lista predefinida.
+   * @returns Un string con un nombre completo, ej. "Sofía López".
+   */
+  generarNombreAleatorio(): string {
+    const nombres = [
+      'Carlos',
+      'Ana',
+      'Juan',
+      'Sofía',
+      'Luis',
+      'María',
+      'David',
+      'Laura',
+      'José',
+      'Elena',
+    ];
+    const apellidos = [
+      'García',
+      'Rodríguez',
+      'Martínez',
+      'Hernández',
+      'López',
+      'González',
+      'Pérez',
+      'Sánchez',
+    ];
+
+    const nombreAleatorio = nombres[Math.floor(Math.random() * nombres.length)];
+    const apellidoAleatorio =
+      apellidos[Math.floor(Math.random() * apellidos.length)];
+
+    return `${nombreAleatorio} ${apellidoAleatorio}`;
   }
 
   ngOnDestroy() {}

@@ -28,7 +28,10 @@ import {
 import { DynamicInyectCssService } from '../../services/dynamic-inyect-css.service';
 import { FormDomSynchronizerService } from '../../services/form-dom-synchronizer.service';
 import { CommonModule } from '@angular/common';
-import { DynamicClickPayload } from '../../interfaces/DynamicContent.interface';
+import {
+  DataBinding,
+  DynamicClickPayload,
+} from '../../interfaces/DynamicContent.interface';
 
 /**
  * @description
@@ -74,6 +77,7 @@ export class DynamicViewerComponent
   @Input() formInitialData?: any;
   @Input() buttonConfigs?: ButtonConfig[];
   @Input() parentForm?: FormGroup;
+  @Input() dataBindings?: DataBinding[];
 
   @Output() formSubmitted = new EventEmitter<{ formId?: string; data: any }>();
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
@@ -133,6 +137,9 @@ export class DynamicViewerComponent
         }
         if (changes['cssContentString'] || changes['contentId']) {
           this.injectCss();
+        }
+        if (changes['dataBindings']) {
+          setTimeout(() => this.processIdDomBindings(), 0);
         }
       }
     }
@@ -353,6 +360,7 @@ export class DynamicViewerComponent
       this.setupInjectedActionClickListeners();
       this.cacheButtonElements();
       this.updateButtonStates();
+      this.processIdDomBindings();
 
       return true;
     };
@@ -836,29 +844,57 @@ export class DynamicViewerComponent
   }
 
   /**
+   * Procesa los bindings de datos basados en un array de objetos {idDom, value}.
+   * Busca cada elemento por su ID y actualiza su contenido.
+   */
+  private processIdDomBindings(): void {
+    if (!this.htmlContainerRef || !this.dataBindings) {
+      return;
+    }
+
+    this.dataBindings.forEach((binding) => {
+      if (!binding.selector) return;
+      const element = this.htmlContainerRef.nativeElement.querySelector(
+        '#' + binding.selector
+      );
+
+      if (element) {
+        element.textContent = String(binding.value ?? '');
+      } else {
+        this.emitError(
+          `El elemento con idDom "${binding.selector}" para dataBinding no fue encontrado.`
+        );
+      }
+    });
+  }
+
+  /**
    * Busca todos los enlaces <a> dentro del contenido inyectado y previene
    * su comportamiento de navegación por defecto para que no recarguen la página.
    */
   private preventStandardNavigationLinks(): void {
-    console.log('1. Intentando prevenir la navegación...'); // <-- LOG 1
     if (!this.htmlContainerRef) {
-      console.error('ERROR: htmlContainerRef no existe.');
       return;
     }
 
     const links = this.htmlContainerRef.nativeElement.querySelectorAll('a');
-    console.log(`2. Se encontraron ${links.length} enlaces.`); // <-- LOG 2 (¡Este es el más importante!)
 
     links.forEach((link) => {
       if (link.hasAttribute('href')) {
-        console.log('3. Agregando listener al enlace:', link); // <-- LOG 3
         this.setupListener(link, 'click', (event: Event) => {
-          console.log(
-            '%c 4. ¡CLIC INTERCEPTADO! Previniendo redirección para:',
-            'background: #222; color: #bada55',
-            link.href
-          ); // <-- LOG 4
           event.preventDefault();
+
+          const href = link.getAttribute('href');
+
+          if (href) {
+            this.actionClicked.emit({
+              action: 'navigate',
+              payload: { route: href },
+              sourceId: this.contentId,
+              clickedElement: link,
+              originalEvent: event,
+            });
+          }
         });
       }
     });

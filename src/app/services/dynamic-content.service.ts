@@ -40,7 +40,8 @@ export class DynamicContentService {
                 formInitialData: item?.formInitialData,
                 buttonConfigs: item?.buttonConfigs,
                 validators: item?.validators,
-                otros: {}, // Puedes agregar más propiedades si es necesario
+                otros: {},
+                dataBindings: item?.dataBindings,
               } as ApiDrivenContent)
           );
           return mapper;

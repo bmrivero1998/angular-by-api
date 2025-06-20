@@ -15,6 +15,12 @@ export interface ApiDrivenContent {
   validators?: any[]; // Validadores para el FormGroup
   otros?: any; // Otros datos adicionales
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
+  dataBindings?: DataBinding[]; // Mapeos de datos para actualizar el DOM
+}
+
+export interface DataBinding {
+  selector: string; // El ID del elemento en el DOM que se va a actualizar
+  value: string | number | boolean | null | undefined; // El valor a mostrar
 }
 
 export interface DisplayableDynamicContent extends ApiDrivenContent {
@@ -37,6 +43,7 @@ export interface DynamicContentPayload {
   validators?: any[]; // Validadores para el FormGroup
   otros?: any; // Otros datos adicionales
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
+  dataBindings?: DataBinding[]; // Mapeos de datos para actualizar el DOM
 }
 
 export interface DynamicClickPayload {
