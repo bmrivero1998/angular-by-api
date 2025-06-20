@@ -1,22 +1,17 @@
 <div #dynamicContentHost>
   <div
-    *ngFor="let item of displayableItems; let i = index"
+    *ngFor="let item of displayableItems$ | async"
     class="dynamic-item-wrapper"
   >
     <app-dynamic-viewer
       [contentId]="item.id_DocumentHTMLCSS"
       [htmlContentString]="item.htmlComponent"
       [cssContentString]="item.cssComponent"
-      [formId]="item.formId || item.id_DocumentHTMLCSS"
-      [formMappings]="item.formMappings"
-      [formInitialData]="item.formInitialData"
-      (formSubmitted)="handleViewerFormSubmission($event)"
-      [buttonConfigs]="item.buttonConfigs"
-      [parentForm]="parentForm"
       [dataBindings]="item.dataBindings"
+      [formMappings]="item.formMappings"
+      [buttonConfigs]="item.buttonConfigs"
       (actionClicked)="handleViewerActionClick($event)"
     >
     </app-dynamic-viewer>
-    <hr *ngIf="i < displayableItems.length - 1" />
   </div>
 </div>

@@ -855,7 +855,7 @@ export class DynamicViewerComponent
     this.dataBindings.forEach((binding) => {
       if (!binding.selector) return;
       const element = this.htmlContainerRef.nativeElement.querySelector(
-        '#' + binding.selector
+        binding.selector
       );
 
       if (element) {
