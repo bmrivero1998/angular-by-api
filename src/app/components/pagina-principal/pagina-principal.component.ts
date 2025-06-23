@@ -1,24 +1,13 @@
-import { HttpClient } from '@angular/common/http';
-import {
-  AfterViewInit,
-  ChangeDetectorRef,
-  Component,
-  OnDestroy,
-  OnInit,
-} from '@angular/core';
+import { AfterViewInit, Component, OnDestroy, OnInit } from '@angular/core';
 import { FormGroup } from '@angular/forms';
-import { DomSanitizer } from '@angular/platform-browser';
 import { Router } from '@angular/router';
-import { DisplayableInAppComponent } from '../../app.component';
 import {
   ApiDrivenContent,
   DynamicClickPayload,
-  DynamicContentPayload,
 } from '../../interfaces/DynamicContent.interface';
-import { DynamicContentService } from '../../services/dynamic-content.service';
 import { CommonModule } from '@angular/common';
 import { DynamicViewerComponent } from '../dynamic-viewer/dynamic-viewer.component';
-import { Observable, take } from 'rxjs';
+import { finalize, Observable, take, tap } from 'rxjs';
 import { DynamicViewerService } from '../../services/dynamic-viewer.service';
 
 @Component({
@@ -30,7 +19,9 @@ import { DynamicViewerService } from '../../services/dynamic-viewer.service';
 export class PaginaPrincipalComponent
   implements OnInit, OnDestroy, AfterViewInit
 {
-  public displayableItems$: Observable<ApiDrivenContent[]>;
+  public staticContent$: Observable<ApiDrivenContent[]>;
+  public dynamicContent$: Observable<ApiDrivenContent[]>;
+  public showDynamicContent: boolean = true;
   public formGroup: FormGroup = new FormGroup({});
   public headersDataTable: string[] = [];
   public dataTable: any[] = [];
@@ -38,11 +29,18 @@ export class PaginaPrincipalComponent
     private dws: DynamicViewerService,
     private readonly router: Router
   ) {
-    this.displayableItems$ = this.dws.dynamicContent$;
+    this.staticContent$ = this.dws.staticContent$;
+    this.dynamicContent$ = this.dws.dynamicContent$;
   }
 
   ngOnInit() {
-    this.dws.loadInitialContent('menuPrincipal').subscribe();
+    this.dws
+      .loadInitialContent('plantillaModificada')
+      .pipe(
+        tap(() => (this.showDynamicContent = false)),
+        finalize(() => (this.showDynamicContent = true))
+      )
+      .subscribe();
   }
 
   ngAfterViewInit(): void {
@@ -62,17 +60,15 @@ export class PaginaPrincipalComponent
   }
 
   actualizarNombreConServicio(): void {
-    const tableNameForm = this.formGroup.get(
-      'updateTableTitleForm'
-    ) as FormGroup;
-    if (!tableNameForm || !tableNameForm.valid) {
-      console.error('El formulario no es válido o no existe');
+    const tableNameForm = this.userform;
+    if (!tableNameForm) {
+      console.error('El formulario no existe');
       return;
     } else {
       const nuevoNombre = tableNameForm.get('tableTitle')?.value;
       if (nuevoNombre) {
         this.dws.updateBindingValue(
-          'user-table-card',
+          'demo-page-wrapper',
           '#table-title-display',
           nuevoNombre
         );
@@ -82,10 +78,9 @@ export class PaginaPrincipalComponent
   }
 
   addNewUserToTable(newUserData: any) {
-    // Tomamos el estado actual UNA SOLA VEZ para trabajar sobre él
-    this.displayableItems$.pipe(take(1)).subscribe((currentState) => {
+    this.dynamicContent$.pipe(take(1)).subscribe((currentState) => {
       const tableComponent = currentState.find(
-        (c) => c.id_DocumentHTMLCSS === 'user-table-card'
+        (c) => c.id_DocumentHTMLCSS === 'demo-page-wrapper'
       );
       const tableBinding = tableComponent?.tableBindings?.[0];
 
@@ -97,18 +92,24 @@ export class PaginaPrincipalComponent
         ];
 
         // Llamamos al nuevo y potente método del servicio
-        this.dws.updateTable('user-table-card', '#main-user-table', {
-          data: newData,
-        });
+        this.dws.updateTable(
+          tableComponent.id_DocumentHTMLCSS,
+          '#main-user-table',
+          {
+            data: newData,
+          }
+        );
 
         // Reseteamos el formulario
-        this.formGroup.get('addUserForm')?.reset();
+        this.userform.controls['name'].setValue('');
+        this.userform.controls['email'].setValue('');
+        this.userform.controls['age'].setValue('');
       }
     });
   }
 
   addNewColumnToTable(newColumnData: any) {
-    this.displayableItems$.pipe(take(1)).subscribe((currentState) => {
+    this.dynamicContent$.pipe(take(1)).subscribe((currentState) => {
       const tableComponent = currentState.find(
         (c) => c.id_DocumentHTMLCSS === 'user-table-card'
       );
@@ -141,19 +142,27 @@ export class PaginaPrincipalComponent
       case 'addUser':
         const nuevoUsuario = this.generarDatoParaTabla();
         this.addNewUserToTable(nuevoUsuario);
-
+        break;
+      case 'navigate':
+        this.dws
+          .updateDynamicContent('menuPrincipal')
+          .pipe(
+            tap(() => (this.showDynamicContent = false)),
+            finalize(() => (this.showDynamicContent = true))
+          )
+          .subscribe();
         break;
     }
   }
 
   private get userform(): FormGroup {
-    return this.formGroup?.get('addUserForm') as FormGroup;
+    return this.formGroup?.get('demoForms') as FormGroup;
   }
 
   private generarDatoParaTabla(): any {
     this.userform;
-    if (!this.userform || !this.userform.valid) {
-      console.error('El formulario no es válido o no existe');
+    console.log(this.userform);
+    if (!this.userform) {
       return;
     } else {
       const name = this.userform.get('name')?.value;

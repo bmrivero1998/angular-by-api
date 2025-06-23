@@ -43,6 +43,7 @@ export class DynamicContentService {
                 otros: {},
                 dataBindings: item?.dataBindings,
                 tableBindings: item?.tableBindings,
+                renderType: item?.renderType || 'static',
               } as ApiDrivenContent)
           );
           return mapper;

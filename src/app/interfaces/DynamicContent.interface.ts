@@ -16,7 +16,9 @@ export interface ApiDrivenContent {
   otros?: any; // Otros datos adicionales
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
   dataBindings?: DataBinding[]; // Mapeos de datos para actualizar el DOM
-  tableBindings?: TableBinding[];
+  tableBindings?: TableBinding[]; // Mapeos de tablas para renderizar datos
+  renderType: 'static' | 'dynamic'; // Tipo de renderizado: 'static' para contenido estático, 'dynamic' para contenido dinámico
+  dynamicContentId?: string; // Un ID opcional para identificar el contenido dinámico
 }
 
 export interface DataBinding {
@@ -46,6 +48,8 @@ export interface DynamicContentPayload {
   buttonConfigs?: ButtonConfig[]; // Configuración de botones
   dataBindings?: DataBinding[]; // Mapeos de datos para actualizar el DOM
   tableBindings?: TableBinding[]; // Mapeos de tablas para renderizar datos
+  renderType: 'static' | 'dynamic'; // Tipo de renderizado: 'static' para contenido estático, 'dynamic' para contenido dinámico
+  dynamicContentId?: string; // Un ID opcional para identificar el contenido dinámico
 }
 
 export interface DynamicClickPayload {

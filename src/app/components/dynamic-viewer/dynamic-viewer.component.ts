@@ -155,6 +155,10 @@ export class DynamicViewerComponent
     if (this.styleId) {
       this.cssInjector.removeCss(this.styleId);
     }
+    if (this.isForm) {
+      this.parentForm?.removeControl(this.formId || this.contentId);
+      this.synchronizer.disconnect(this.formId || this.contentId);
+    }
     this.cleanupDomInteractions();
     this.subscriptions.unsubscribe();
   }
@@ -257,7 +261,7 @@ export class DynamicViewerComponent
       this.dynamicForm.patchValue(this.formInitialData, { emitEvent: false });
     }
 
-    if (this.parentForm) {
+    if (this.parentForm && this.isForm) {
       const controlName = this.formId || this.contentId;
       this.parentForm.removeControl(controlName);
       this.parentForm.addControl(controlName, this.dynamicForm);
@@ -691,6 +695,7 @@ export class DynamicViewerComponent
    *     - `formIsInvalidOrPristine`
    *     - `formIsEmpty`
    *     - `formIsNotEmpty`
+   *     - `controlIsInvalid:control`
    *
    * La función `isFormEffectivelyEmpty()` se utiliza para determinar si el
    * formulario está vacío en el caso de que contenga algún campo que no sea
@@ -701,43 +706,121 @@ export class DynamicViewerComponent
     if (!this.buttonConfigs || !this.dynamicForm) return;
 
     const form = this.dynamicForm;
+
     this.buttonConfigs.forEach((config) => {
       const button = this.buttonElements.get(config.selector);
       if (!button) return;
 
       let isDisabled = false;
-      if (typeof config.disableWhen === 'function') {
-        isDisabled = config.disableWhen(form);
-      } else if (typeof config.disableWhen === 'string') {
-        // Mapeo directo para condiciones comunes
-        const conditionMap: { [key: string]: boolean } = {
-          formIsInvalid: form.invalid,
-          formIsValid: form.valid,
-          formIsPristine: form.pristine,
-          formIsDirty: form.dirty,
-          formIsTouched: form.touched,
-          formIsUntouched: form.untouched,
-          formIsPending: form.pending,
-          formItselfIsDisabled: form.disabled,
-          formItselfIsEnabled: form.enabled,
-          alwaysDisable: true,
-          neverDisable: false,
-          // Condiciones compuestas
-          formIsInvalidOrPristine: form.invalid || form.pristine,
-          formIsEmpty: this.isFormEffectivelyEmpty(),
-          formIsNotEmpty: !this.isFormEffectivelyEmpty(),
-        };
+      const condition = config.disableWhen;
 
-        if (config.disableWhen in conditionMap) {
-          isDisabled = conditionMap[config.disableWhen];
-        } else {
-          this.emitError(
-            `Condición de 'disableWhen' desconocida: ${config.disableWhen}`
+      if (typeof condition === 'function') {
+        isDisabled = condition(form);
+      } else if (typeof condition === 'string') {
+        if (condition.includes(':')) {
+          isDisabled = this._evaluateControlCondition(
+            form,
+            condition,
+            config.selector
           );
+        } else {
+          const conditionMap: { [key: string]: boolean } = {
+            formIsInvalid: form.invalid,
+            formIsValid: form.valid,
+            formIsPristine: form.pristine,
+            formIsDirty: form.dirty,
+            formIsTouched: form.touched,
+            formIsUntouched: form.untouched,
+            formIsPending: form.pending,
+            alwaysDisable: true,
+            neverDisable: false,
+            formIsInvalidOrPristine: form.invalid || form.pristine,
+            formIsEmpty: this.isFormEffectivelyEmpty(),
+            formIsNotEmpty: !this.isFormEffectivelyEmpty(),
+          };
+
+          if (condition in conditionMap) {
+            isDisabled = conditionMap[condition];
+          } else {
+            this.emitError(
+              `Condición de 'disableWhen' desconocida: ${condition}`
+            );
+          }
         }
       }
+
       this.renderer.setProperty(button, 'disabled', isDisabled);
     });
+  }
+  /**
+   * Evalúa condiciones de deshabilitación que dependen de controles específicos del formulario.
+   * @param form El FormGroup que contiene los controles.
+   * @param conditionString La condición completa, ej. 'controlIsInvalid:email,name'.
+   * @param buttonSelector El selector del botón, para mensajes de error claros.
+   * @returns `true` si el botón debe estar deshabilitado.
+   */
+  private _evaluateControlCondition(
+    form: FormGroup,
+    conditionString: string,
+    buttonSelector: string
+  ): boolean {
+    const parts = conditionString.split(':');
+    const condition = parts[0].trim();
+    const controlNames = (parts[1] || '').split(',').map((s) => s.trim());
+
+    if (controlNames.length === 0 || controlNames[0] === '') {
+      this.emitError(
+        `La condición '${condition}' requiere al menos un nombre de control para el botón '${buttonSelector}'.`
+      );
+      return true;
+    }
+
+    const controls = controlNames
+      .map((name) => {
+        const control = form.get(name);
+        if (!control) {
+          this.emitError(
+            `Control '${name}' no encontrado para el botón '${buttonSelector}'.`
+          );
+        }
+        return control;
+      })
+      .filter((c) => c !== null) as AbstractControl[];
+
+    if (controls.length !== controlNames.length) {
+      return true; // Deshabilitamos por seguridad
+    }
+
+    switch (condition) {
+      case 'controlIsInvalid':
+        return controls.some((c) => c.invalid);
+
+      case 'controlIsValid':
+        return controls.every((c) => c.valid);
+
+      case 'controlIsEmpty':
+        return controls.some((c) => !c.value);
+
+      case 'controlIsNotEmpty':
+        return controls.every((c) => !!c.value);
+
+      case 'controlsDoNotMatch':
+        if (controls.length < 2) {
+          this.emitError(
+            `La condición '${condition}' requiere dos controles para el botón '${buttonSelector}'.`
+          );
+          return true;
+        }
+        const [control1, control2] = controls;
+        if (control1.touched && control2.touched) {
+          return control1.value !== control2.value;
+        }
+        return false;
+
+      default:
+        this.emitError(`Condición de control desconocida: ${condition}`);
+        return false;
+    }
   }
 
   /**
