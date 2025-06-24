@@ -31,6 +31,7 @@ import { CommonModule } from '@angular/common';
 import {
   DataBinding,
   DynamicClickPayload,
+  DynamicFormSubmited,
 } from '../../interfaces/DynamicContent.interface';
 
 /**
@@ -79,7 +80,7 @@ export class DynamicViewerComponent
   @Input() parentForm?: FormGroup;
   @Input() dataBindings?: DataBinding[];
 
-  @Output() formSubmitted = new EventEmitter<{ formId?: string; data: any }>();
+  @Output() formSubmitted = new EventEmitter<DynamicFormSubmited>();
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
   @Output() componentError = new EventEmitter<string>();
 

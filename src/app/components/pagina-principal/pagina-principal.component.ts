@@ -9,6 +9,7 @@ import { CommonModule } from '@angular/common';
 import { DynamicViewerComponent } from '../dynamic-viewer/dynamic-viewer.component';
 import { finalize, Observable, take, tap } from 'rxjs';
 import { DynamicViewerService } from '../../services/dynamic-viewer.service';
+import { ModalService } from '../../services/modal-service.service';
 
 @Component({
   selector: 'app-pagina-principal',
@@ -27,7 +28,8 @@ export class PaginaPrincipalComponent
   public dataTable: any[] = [];
   constructor(
     private dws: DynamicViewerService,
-    private readonly router: Router
+    private readonly router: Router,
+    private modalService: ModalService
   ) {
     this.staticContent$ = this.dws.staticContent$;
     this.dynamicContent$ = this.dws.dynamicContent$;
@@ -152,6 +154,9 @@ export class PaginaPrincipalComponent
           )
           .subscribe();
         break;
+      case 'logout':
+        this.router.navigate(['/login']);
+        break;
     }
   }
 
@@ -161,7 +166,7 @@ export class PaginaPrincipalComponent
 
   private generarDatoParaTabla(): any {
     this.userform;
-    console.log(this.userform);
+    this.openModal('modalAddUser');
     if (!this.userform) {
       return;
     } else {
@@ -173,6 +178,19 @@ export class PaginaPrincipalComponent
         return { name, email, age };
       }
     }
+  }
+
+  private openModal(modalId: string): void {
+    this.modalService
+      .open('1')
+      .pipe(take(1))
+      .subscribe((result) => {
+        if (result) {
+          console.log('Modal cerrado con resultado:', result);
+        } else {
+          console.log('Modal cerrado sin resultado (cancelado).');
+        }
+      });
   }
 
   ngOnDestroy(): void {

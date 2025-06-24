@@ -62,6 +62,11 @@ export interface DynamicClickPayload {
   formData?: { [key: string]: any }; // Datos del formulario asociados al clic, si aplica
 }
 
+export interface DynamicFormSubmited {
+  formId?: string;
+  data: any;
+}
+
 export interface DynamicFormDataPayload {
   sourceId?: string; // Un identificador opcional para el origen del formulario
   formName?: string; // El 'name' del formulario, si lo tiene
