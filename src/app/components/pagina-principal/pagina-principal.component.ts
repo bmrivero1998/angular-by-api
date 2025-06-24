@@ -112,6 +112,77 @@ export class PaginaPrincipalComponent
       }
     });
   }
+  /**
+   * Busca un usuario por su ID en las tablas de contenido estático y dinámico,
+   * y lo elimina si lo encuentra.
+   * @param userId - El ID del usuario a eliminar.
+   */
+  private removeUserFromTable(userId: string): void {
+    if (!userId) {
+      console.error('Se requiere un ID de usuario para eliminar.');
+      return;
+    }
+
+    // Asumimos que estos métodos existen en tu servicio
+    const staticState = this.dws.getStaticContentValue();
+    const dynamicState = this.dws.getDynamicContentValue();
+
+    // La función auxiliar ahora usa .filter() para eliminar correctamente
+    const findAndDeleteInState = (
+      state: ApiDrivenContent[],
+      idToRemove: string
+    ): boolean => {
+      let itemFoundAndDeleted = false;
+      for (const component of state) {
+        if (!component.tableBindings) continue;
+
+        for (const table of component.tableBindings) {
+          // Verificamos si el usuario existe en esta tabla
+          const userExists = table.data.some((row) => row.id == idToRemove);
+
+          if (userExists) {
+            // PUNTO CLAVE: Usamos .filter() para crear un nuevo array
+            // que excluye al usuario con el ID coincidente.
+            const newData = table.data.filter((row) => row.id != idToRemove);
+
+            // Actualizamos la tabla con el nuevo array de datos (ya sin el usuario)
+            this.dws.updateTable(
+              component.id_DocumentHTMLCSS,
+              table.tableSelector,
+              { data: newData }
+            );
+
+            itemFoundAndDeleted = true;
+            // Rompemos los bucles porque ya lo encontramos y eliminamos
+            return itemFoundAndDeleted;
+          }
+        }
+        if (itemFoundAndDeleted) break;
+      }
+      return itemFoundAndDeleted;
+    };
+
+    // Buscamos y eliminamos en el estado estático
+    if (findAndDeleteInState(staticState, userId)) {
+      this.toastService.show('Usuario eliminado con éxito.', {
+        classname: 'bg-success text-light',
+      });
+      return;
+    }
+
+    // Si no, buscamos y eliminamos en el estado dinámico
+    if (findAndDeleteInState(dynamicState, userId)) {
+      this.toastService.show('Usuario eliminado con éxito.', {
+        classname: 'bg-success text-light',
+      });
+      return;
+    }
+
+    // Si llegamos aquí, no se encontró al usuario
+    console.error(
+      `No se encontró un usuario con el ID ${userId} para eliminar.`
+    );
+  }
 
   /**
    * Busca un usuario por su ID en las tablas de contenido estático y dinámico,
@@ -226,6 +297,7 @@ export class PaginaPrincipalComponent
         this.handleEditUser(payload);
         break;
       case 'delete-user':
+        this.handleDeleteUser(payload);
         break;
 
       case 'updateTableTitle':
@@ -312,6 +384,40 @@ export class PaginaPrincipalComponent
           this.userId = rowId;
           if (rowData) {
             this.openModal('modalAddUser', rowData);
+          } else {
+            console.error(
+              `No se encontraron datos para la fila con ID: ${rowId} en el estado actual.`
+            );
+          }
+        }
+      });
+    });
+  }
+
+  private handleDeleteUser(payload: DynamicClickPayload): void {
+    if (!payload.clickedElement) {
+      console.error('El payload de la acción no contenía el elemento del DOM.');
+      return;
+    }
+
+    const rowId = payload.clickedElement.dataset['rowId'];
+
+    if (!rowId) {
+      console.error('El botón pulsado no contenía el atributo data-row-id.');
+      return;
+    }
+
+    this.dynamicContent$.pipe(take(1)).subscribe((currentState) => {
+      const tableComponent = currentState.find(
+        (c) => c.id_DocumentHTMLCSS === 'center-content-001'
+      );
+      const tableBinding = tableComponent?.tableBindings;
+      tableBinding?.forEach((item) => {
+        if (item?.data) {
+          const rowData = item.data.find((row) => row.id == rowId);
+          this.userId = rowId;
+          if (rowData) {
+            this.removeUserFromTable(rowId);
           } else {
             console.error(
               `No se encontraron datos para la fila con ID: ${rowId} en el estado actual.`
