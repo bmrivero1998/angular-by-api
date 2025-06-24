@@ -39,7 +39,6 @@ export class ModalFrameComponent implements OnInit {
   }
 
   onClose(result: any = null): void {
-    console.log('Modal closed with result:', result);
     this.close.emit(result);
   }
 

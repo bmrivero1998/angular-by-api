@@ -58,28 +58,17 @@ export class LoginComponent implements OnInit, OnDestroy {
     });
   }
   handleViewerFormSubmission(payload: { formId?: string; data: any }): void {
-    console.log(
-      `AppComponent: Formulario ${payload.formId} enviado desde viewer con datos:`,
-      payload.data
-    );
-
     this.http
       .get('https://jsonplaceholder.typicode.com/todos/1?_delay=2000')
       .subscribe((response) => {
-        console.log('Respuesta recibida:', response);
         this.router.navigate(['/principal']);
       });
   }
 
   handleViewerActionClick(payload: DynamicClickPayload): void {
-    console.log(
-      `AppComponent: Acción ${payload.action} clickeada desde viewer con datos:`,
-      payload
-    );
     this.http
       .get('https://jsonplaceholder.typicode.com/todos/1?_delay=2000')
       .subscribe((response) => {
-        console.log('Respuesta recibida:', response);
         this.router.navigate(['/principal']);
       });
   }

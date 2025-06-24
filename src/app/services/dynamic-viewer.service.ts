@@ -25,6 +25,14 @@ export class DynamicViewerService {
 
   constructor(private dcs: DynamicContentService) {}
 
+  public getStaticContentValue(): ApiDrivenContent[] {
+    return this._staticContent$.getValue();
+  }
+
+  public getDynamicContentValue(): ApiDrivenContent[] {
+    return this._dynamicContent$.getValue();
+  }
+
   /**
    * Carga y procesa el contenido inicial, incluyendo las tablas,
    * y luego lo separa en streams estáticos y dinámicos.
@@ -34,7 +42,6 @@ export class DynamicViewerService {
   ): Observable<ApiDrivenContent[]> {
     return this.dcs.getContent(pageIdentifier).pipe(
       map((payloads: ApiDrivenContent[]) => {
-        console.log('Servicio: Procesando bindings de tabla...');
         return payloads.map((payload) => this._processTableBindings(payload));
       }),
 
@@ -55,12 +62,8 @@ export class DynamicViewerService {
     contentId: string
   ): Observable<ApiDrivenContent[]> {
     this._dynamicContent$.next([]); // Limpiamos el contenido dinámico actual
-    console.log(
-      `Servicio: Actualizando contenido dinámico con ID ${contentId}`
-    );
     return this.dcs.getContent(contentId).pipe(
       map((payloads: ApiDrivenContent[]) => {
-        console.log('Servicio: Procesando bindings de tabla...');
         return payloads.map((payload) => this._processTableBindings(payload));
       }),
       tap((processedPayloads: ApiDrivenContent[]) => {
@@ -72,7 +75,6 @@ export class DynamicViewerService {
     );
   }
 
-  // El método updateTable sigue siendo correcto, porque llama a _processTableBindings internamente.
   public updateTable(
     contentId: string,
     tableSelector: string,
@@ -102,9 +104,6 @@ export class DynamicViewerService {
     });
 
     if (staticUpdated) {
-      console.log(
-        `Servicio: Tabla '${tableSelector}' en contenido ESTÁTICO fue actualizada.`
-      );
       this._staticContent$.next(newStaticState);
       return;
     }
@@ -131,9 +130,6 @@ export class DynamicViewerService {
     });
 
     if (dynamicUpdated) {
-      console.log(
-        `Servicio: Tabla '${tableSelector}' en contenido DINÁMICO fue actualizada.`
-      );
       this._dynamicContent$.next(newDynamicState);
     }
   }

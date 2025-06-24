@@ -10,6 +10,7 @@ import { DynamicViewerComponent } from '../dynamic-viewer/dynamic-viewer.compone
 import { finalize, Observable, take, tap } from 'rxjs';
 import { DynamicViewerService } from '../../services/dynamic-viewer.service';
 import { ModalService } from '../../services/modal-service.service';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-pagina-principal',
@@ -26,10 +27,13 @@ export class PaginaPrincipalComponent
   public formGroup: FormGroup = new FormGroup({});
   public headersDataTable: string[] = [];
   public dataTable: any[] = [];
+  private userId: string = '0';
+
   constructor(
     private dws: DynamicViewerService,
     private readonly router: Router,
-    private modalService: ModalService
+    private modalService: ModalService,
+    private toastService: ToastService
   ) {
     this.staticContent$ = this.dws.staticContent$;
     this.dynamicContent$ = this.dws.dynamicContent$;
@@ -50,7 +54,6 @@ export class PaginaPrincipalComponent
       const addUserForm = this.formGroup.get('addUserForm');
 
       if (addUserForm) {
-        console.log("Deshabilitando el formulario 'addUserForm' al inicio.");
         addUserForm.disable();
       }
 
@@ -110,6 +113,90 @@ export class PaginaPrincipalComponent
     });
   }
 
+  /**
+   * Busca un usuario por su ID en las tablas de contenido estático y dinámico,
+   * y actualiza sus datos si lo encuentra.
+   * @param updatedUserData - El objeto del usuario con los datos actualizados.
+   * Debe contener una propiedad 'id'.
+   */
+  public updateUserInTable(updatedUserData: {
+    id: any;
+    [key: string]: any;
+  }): void {
+    if (!updatedUserData?.id) {
+      console.error(
+        'Los datos para actualizar están incompletos. Se requiere un ID.'
+      );
+      this.toastService.show(
+        'Los datos para actualizar están incompletos. Se requiere un ID.',
+        {
+          classname: 'bg-danger text-light',
+          delay: 10000,
+        }
+      );
+      return;
+    }
+    const staticState = this.dws.getStaticContentValue();
+    const dynamicState = this.dws.getDynamicContentValue();
+
+    const findAndUpdateInState = (
+      state: ApiDrivenContent[],
+      userData: { id: any }
+    ): boolean => {
+      let itemFoundAndUpdated = false;
+
+      for (const component of state) {
+        if (!component.tableBindings) continue;
+        for (const table of component.tableBindings) {
+          const userIndex = table.data.findIndex(
+            (row) => row.id == userData.id
+          );
+
+          if (userIndex !== -1) {
+            const newData = table.data.map((row) => {
+              if (row.id == userData.id) {
+                return { ...row, ...userData };
+              }
+              return row;
+            });
+            this.dws.updateTable(
+              component.id_DocumentHTMLCSS,
+              table.tableSelector,
+              {
+                data: newData,
+              }
+            );
+
+            itemFoundAndUpdated = true;
+            return itemFoundAndUpdated;
+          }
+        }
+        if (itemFoundAndUpdated) break;
+      }
+      return itemFoundAndUpdated;
+    };
+
+    if (findAndUpdateInState(staticState, updatedUserData)) {
+      this.toastService.show('Usuario actualizado con éxito!', {
+        classname: 'bg-success text-light',
+        delay: 10000,
+      });
+      return;
+    }
+
+    if (findAndUpdateInState(dynamicState, updatedUserData)) {
+      this.toastService.show('Usuario actualizado con éxito!', {
+        classname: 'bg-success text-light',
+        delay: 10000,
+      });
+      return;
+    }
+
+    console.error(
+      `No se encontró un usuario con el ID ${updatedUserData.id} para actualizar.`
+    );
+  }
+
   addNewColumnToTable(newColumnData: any) {
     this.dynamicContent$.pipe(take(1)).subscribe((currentState) => {
       const tableComponent = currentState.find(
@@ -118,13 +205,11 @@ export class PaginaPrincipalComponent
       const tableBinding = tableComponent?.tableBindings?.[0];
 
       if (tableBinding) {
-        // Creamos la nueva definición de la columna
         const newColumn = {
           header: newColumnData.columnHeader,
           key: newColumnData.columnKey,
         };
 
-        // Creamos el nuevo array de columnas de forma inmutable
         const newColumns = [...tableBinding.columns, newColumn];
         this.dws.updateTable('user-table-card', '#main-user-table', {
           columns: newColumns,
@@ -136,8 +221,13 @@ export class PaginaPrincipalComponent
   }
 
   handleViewerActionClick(payload: DynamicClickPayload): void {
-    console.log('handleViewerActionClick', payload);
     switch (payload.action) {
+      case 'edit-user':
+        this.handleEditUser(payload);
+        break;
+      case 'delete-user':
+        break;
+
       case 'updateTableTitle':
         this.actualizarNombreConServicio();
         break;
@@ -165,8 +255,6 @@ export class PaginaPrincipalComponent
   }
 
   private generarDatoParaTabla(): any {
-    this.userform;
-    this.openModal('modalAddUser');
     if (!this.userform) {
       return;
     } else {
@@ -180,20 +268,75 @@ export class PaginaPrincipalComponent
     }
   }
 
-  private openModal(modalId: string): void {
+  private openModal(
+    modalId: string,
+    data: { name: string; email: string }
+  ): void {
     this.modalService
-      .open('1')
+      .open('1', data)
       .pipe(take(1))
       .subscribe((result) => {
         if (result) {
-          console.log('Modal cerrado con resultado:', result);
+          this.handleModalResult(result);
         } else {
-          console.log('Modal cerrado sin resultado (cancelado).');
         }
       });
   }
 
-  ngOnDestroy(): void {
-    this.dws.clearContent();
+  /**
+   * Maneja la acción de clic para un botón en una fila de la tabla
+   * y extrae los datos de esa fila.
+   * @param payload El objeto DynamicClickPayload recibido del evento.
+   */
+  private handleEditUser(payload: DynamicClickPayload): void {
+    if (!payload.clickedElement) {
+      console.error('El payload de la acción no contenía el elemento del DOM.');
+      return;
+    }
+
+    const rowId = payload.clickedElement.dataset['rowId'];
+
+    if (!rowId) {
+      console.error('El botón pulsado no contenía el atributo data-row-id.');
+      return;
+    }
+
+    this.dynamicContent$.pipe(take(1)).subscribe((currentState) => {
+      const tableComponent = currentState.find(
+        (c) => c.id_DocumentHTMLCSS === 'center-content-001'
+      );
+      const tableBinding = tableComponent?.tableBindings;
+      tableBinding?.forEach((item) => {
+        if (item?.data) {
+          const rowData = item.data.find((row) => row.id == rowId);
+          this.userId = rowId;
+          if (rowData) {
+            this.openModal('modalAddUser', rowData);
+          } else {
+            console.error(
+              `No se encontraron datos para la fila con ID: ${rowId} en el estado actual.`
+            );
+          }
+        }
+      });
+    });
   }
+
+  private handleModalResult(result: any): void {
+    const formData = result.genericForm;
+
+    if (formData) {
+      const nombreUsuario = formData.name;
+      const correoUsuario = formData.email;
+
+      const nuevoUsuario = {
+        id: this.userId,
+        name: nombreUsuario,
+        email: correoUsuario,
+      };
+
+      this.updateUserInTable(nuevoUsuario);
+    }
+  }
+  ngOnDestroy(): void {}
 }
