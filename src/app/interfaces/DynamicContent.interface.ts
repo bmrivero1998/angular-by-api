@@ -36,7 +36,7 @@ export interface DynamicApiResponse {
   doc: DynamicContentPayload[]; // Un array de objetos DynamicContentPayload
 }
 export interface DynamicContentPayload {
-  url: string; // La URL de la API
+  url?: string; // La URL de la API
   htmlComponent?: string; // El HTML crudo
   cssComponent?: string; // El CSS para este contenido
   id_DocumentHTMLCSS: string; // Un ID único para este bloque de contenido/CSS

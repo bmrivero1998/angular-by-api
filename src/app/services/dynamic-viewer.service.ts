@@ -61,7 +61,7 @@ export class DynamicViewerService {
   public updateDynamicContent(
     contentId: string
   ): Observable<ApiDrivenContent[]> {
-    this._dynamicContent$.next([]); // Limpiamos el contenido dinámico actual
+    this._dynamicContent$.next([]);
     return this.dcs.getContent(contentId).pipe(
       map((payloads: ApiDrivenContent[]) => {
         return payloads.map((payload) => this._processTableBindings(payload));
@@ -71,6 +71,23 @@ export class DynamicViewerService {
           (p) => p.renderType === 'dynamic'
         );
         this._dynamicContent$.next(dynamicContent);
+      })
+    );
+  }
+
+  public updateStaticContent(
+    contentId: string
+  ): Observable<ApiDrivenContent[]> {
+    this._staticContent$.next([]);
+    return this.dcs.getContent(contentId).pipe(
+      map((payloads: ApiDrivenContent[]) => {
+        return payloads.map((payload) => this._processTableBindings(payload));
+      }),
+      tap((processedPayloads: ApiDrivenContent[]) => {
+        const staticContent = processedPayloads.filter(
+          (p) => p.renderType === 'static'
+        );
+        this._staticContent$.next(staticContent);
       })
     );
   }

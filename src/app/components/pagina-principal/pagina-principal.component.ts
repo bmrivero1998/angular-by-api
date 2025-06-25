@@ -308,13 +308,26 @@ export class PaginaPrincipalComponent
         this.addNewUserToTable(nuevoUsuario);
         break;
       case 'navigate':
-        this.dws
-          .updateDynamicContent('menuPrincipal')
-          .pipe(
-            tap(() => (this.showDynamicContent = false)),
-            finalize(() => (this.showDynamicContent = true))
-          )
-          .subscribe();
+        if (payload.payload?.route === '/dashboard') {
+          this.dws
+            .updateDynamicContent('menuPrincipal')
+            .pipe(
+              tap(() => (this.showDynamicContent = false)),
+              finalize(() => (this.showDynamicContent = true))
+            )
+            .subscribe();
+        } else if (payload.payload?.route === '/') {
+          this.dws.updateDynamicContent('plantillaModificada').subscribe();
+        } else {
+          this.dws
+            .updateDynamicContent('demo-page-wrapper')
+            .pipe(
+              tap(() => (this.showDynamicContent = false)),
+              finalize(() => (this.showDynamicContent = true))
+            )
+            .subscribe();
+        }
+
         break;
       case 'logout':
         this.router.navigate(['/login']);

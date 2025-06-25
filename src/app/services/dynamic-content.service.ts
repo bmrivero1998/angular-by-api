@@ -5,7 +5,6 @@ import {
   DynamicApiResponse,
 } from '../interfaces/DynamicContent.interface';
 import { HttpClient } from '@angular/common/http';
-import { MockApiResponseData } from '../mocks/getContent.mock';
 
 @Injectable({
   providedIn: 'root',
@@ -23,7 +22,6 @@ export class DynamicContentService {
    * @returns Observable<ApiDrivenContent[]>
    */
   getContent(id: string): Observable<ApiDrivenContent[]> {
-    const mock = MockApiResponseData;
     return this.http.get<DynamicApiResponse>(this.apiUrl + '/' + id).pipe(
       map((response) => {
         // Usa el operador map aquí
