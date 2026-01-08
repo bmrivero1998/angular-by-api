@@ -1,7 +1,7 @@
 import { createCustomElement } from '@angular/elements';
 import { createApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
-import { DynamicViewerComponent } from './app/components/dynamic-viewer/dynamic-viewer.component';
+import { DynamicViewerComponent } from '../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
 
 (async () => {
   // 1. Iniciamos el entorno de Angular sin cargar una aplicación completa

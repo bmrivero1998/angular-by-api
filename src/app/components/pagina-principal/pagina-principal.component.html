@@ -1,33 +1,3 @@
-<ng-container *ngIf="staticContent$ | async as staticItems">
-  <app-dynamic-viewer
-    *ngFor="let item of staticItems"
-    [contentId]="item.id_DocumentHTMLCSS"
-    [htmlContentString]="item.htmlComponent"
-    [dataBindings]="item.dataBindings"
-    [buttonConfigs]="item.buttonConfigs"
-    [formMappings]="item.formMappings"
-    [formId]="item.formId || item.id_DocumentHTMLCSS"
-    [parentForm]="formGroup"
-    (actionClicked)="handleViewerActionClick($event)"
-  >
-  </app-dynamic-viewer>
-</ng-container>
-
-<main *ngIf="showDynamicContent">
-  <ng-container *ngIf="dynamicContent$ | async as dynamicItems">
-    <app-dynamic-viewer
-      *ngFor="let item of dynamicItems"
-      [contentId]="item.id_DocumentHTMLCSS"
-      [htmlContentString]="item.htmlComponent"
-      [dataBindings]="item.dataBindings"
-      [formMappings]="item.formMappings"
-      [dataBindings]="item.dataBindings"
-      [buttonConfigs]="item.buttonConfigs"
-      [formMappings]="item.formMappings"
-      [formId]="item.formId || item.id_DocumentHTMLCSS"
-      [parentForm]="formGroup"
-      (actionClicked)="handleViewerActionClick($event)"
-    >
-    </app-dynamic-viewer>
-  </ng-container>
-</main>
+<div>
+  Hola mundo
+</div>

@@ -1,26 +1,27 @@
-import { SafeHtml } from '@angular/platform-browser';
-import { ApiDrivenContent } from './interfaces/DynamicContent.interface';
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterOutlet } from '@angular/router';
-import { LoaderComponent } from './components/loader/loader.component';
-import { ToastContainerComponent } from './components/toast-container/toast-container.component';
-
-export interface DisplayableInAppComponent extends ApiDrivenContent {
-  // Hereda de ApiDrivenContent
-  safeHtml: SafeHtml;
-}
+// src/app/app.component.ts
+import { Component, OnInit } from '@angular/core';
+import { DynamicViewerComponent } from '../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
+import { ApiDrivenContent } from '../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterOutlet,
-    LoaderComponent,
-    ToastContainerComponent,
-  ], // DynamicViewerComponent importado aquí
-  templateUrl: './app.component.html', // Ver abajo
-  styleUrl: './app.component.css',
+  imports: [DynamicViewerComponent],
+  templateUrl: './app.component.html'
 })
-export class AppComponent {}
+export class AppComponent implements OnInit {
+  formConfig?: ApiDrivenContent;
+
+  ngOnInit() {
+    // FORZAMOS EL HOLA MUNDO AQUÍ (Bypass de servicio)
+    this.formConfig = {
+      id_DocumentHTMLCSS: 'test-001',
+      renderType: 'static',
+      htmlComponent: '<h1 style="color: red;">¡HOLA MUNDO DESDE EL MOTOR!</h1>',
+      cssComponent: 'h1 { font-family: sans-serif; }'
+    } as ApiDrivenContent;
+  }
+
+  onFinalSubmit(event: any) { console.log(event); }
+  onInteraction(event: any) { console.log(event); }
+}

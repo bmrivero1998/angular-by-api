@@ -1,31 +1,79 @@
-export const MockNotFoundPage = {
-  ok: false,
-  doc: [
-    {
-      renderType: 'dynamic',
-      id_DocumentHTMLCSS: '404-page',
-      htmlComponent:
-        '\n    <div class="d-flex flex-column align-items-center justify-content-center" style="margin-left: 265px; margin-right: 15px; padding-top: 75px; padding-bottom: 65px; min-height: calc(100vh - 75px - 65px);">\n      <div class="card shadow-lg rounded-3 bg-white p-5 text-center" style="max-width: 600px; width: 100%;">\n        <i class="bi bi-exclamation-triangle-fill text-warning mb-4" style="font-size: 8rem;"></i>\n        <h1 class="display-1 fw-bold text-danger">404</h1>\n        <h2 class="display-5 mb-4 text-secondary">¡Página No Encontrada!</h2>\n        <p class="lead mb-4 text-secondary">Lo sentimos, la página que estás buscando no existe o se ha movido.</p>\n        <a href="/" class="btn btn-primary btn-lg"><i class="bi bi-house-door-fill me-2"></i>Ir a la página de Inicio</a>\n      </div>\n    </div>',
-      cssComponent: '',
-      formId: null,
-      formMappings: [],
-      buttonConfigs: [],
-    },
-  ],
-};
+import { ApiDrivenContent } from '../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
 
-export const MockMaintenancePage = {
-  ok: true,
-  doc: [
+export const FORM_PRO_MOCK: ApiDrivenContent = {
+  id_DocumentHTMLCSS: 'registro-pro-001',
+  renderType: 'dynamic',
+  // HTML con Bootstrap y un input tipo Web Component ficticio
+  htmlComponent: `
+    <div class="card p-4 shadow">
+      <h2 class="mb-4">Registro de Usuario Pro</h2>
+      <form id="formRegistro">
+        <div class="mb-3">
+          <label class="form-label">Nombre de Usuario</label>
+          <input name="username" class="form-control" placeholder="Escribe tu alias...">
+          <div id="user-error" class="text-danger small mt-1"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Tipo de Cuenta</label>
+          <select name="tipoCuenta" class="form-select">
+            <option value="estandar">Estándar</option>
+            <option value="premium">Premium</option>
+          </select>
+        </div>
+
+        <div id="seccionPremium" class="mb-3 border-start border-primary ps-3">
+          <label class="form-label">Código de Invitación Premium</label>
+          <input name="codigoVip" class="form-control" placeholder="VIP-XXXX">
+        </div>
+
+        <button id="btnEnviar" class="btn btn-primary w-100 mt-3" data-dynamic-action="submit_form">
+          Registrar Ahora
+        </button>
+      </form>
+    </div>
+  `,
+  cssComponent: `
+    .card { border-radius: 15px; }
+    .is-invalid { border-color: #dc3545 !important; }
+    .is-valid { border-color: #198754 !important; }
+  `,
+  formMappings: [
     {
-      renderType: 'dynamic',
-      id_DocumentHTMLCSS: 'maintenance-page',
-      htmlComponent:
-        '\n    <div class="d-flex flex-column align-items-center justify-content-center" style="margin-left: 265px; margin-right: 15px; padding-top: 75px; padding-bottom: 65px; min-height: calc(100vh - 75px - 65px);">\n      <div class="card shadow-lg rounded-3 bg-white p-5 text-center" style="max-width: 600px; width: 100%;">\n        <i class="bi bi-tools text-info mb-4" style="font-size: 8rem;"></i>\n        <h1 class="display-3 fw-bold text-primary">¡Estamos en Mantenimiento!</h1>\n        <h2 class="display-6 mb-4 text-secondary">Mejorando tu experiencia.</h2>\n        <p class="lead mb-4 text-secondary">Disculpa las molestias. Estamos realizando actualizaciones importantes y volveremos en breve.</p>\n        <button type="button" onclick="location.reload();" class="btn btn-success btn-lg"><i class="bi bi-arrow-clockwise me-2"></i>Recargar Página</button>\n      </div>\n    </div>',
-      cssComponent: '',
-      formId: null,
-      formMappings: [],
-      buttonConfigs: [],
+      controlName: 'username',
+      domSelector: 'input[name="username"]',
+      errorDisplaySelector: '#user-error',
+      validatorConfig: [
+        { type: 'required', message: 'El alias es obligatorio.' },
+        { type: 'minlength', value: 5, message: 'Mínimo 5 caracteres.' }
+      ],
+      // Validación asíncrona real contra tu API
+      asyncValidator: {
+        endpoint: '/check-username',
+        method: 'GET',
+        errorKey: 'userTaken',
+        message: '¡Este nombre ya está en uso!',
+        debounceTime: 800
+      }
     },
+    {
+      controlName: 'tipoCuenta',
+      domSelector: 'select[name="tipoCuenta"]',
+      defaultValue: 'estandar'
+    },
+    {
+      controlName: 'codigoVip',
+      domSelector: '#seccionPremium',
+      showIf: "form.tipoCuenta === 'premium'", // Lógica Condicional Pro
+      validatorConfig: [
+        { type: 'required', message: 'El código VIP es necesario para cuentas Premium.' }
+      ]
+    }
   ],
+  buttonConfigs: [
+    {
+      selector: '#btnEnviar',
+      disableWhen: 'formIsInvalid' // Deshabilitar si hay errores o está validando
+    }
+  ]
 };

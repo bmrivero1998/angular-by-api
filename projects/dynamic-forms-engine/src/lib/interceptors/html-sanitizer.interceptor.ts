@@ -9,7 +9,7 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import * as DOMPurify from 'dompurify';
-import { DYNAMIC_CONFIG } from '../../../projects/dynamic-forms-engine/src/lib/dynamic-config.token';
+import { DYNAMIC_CONFIG } from '../dynamic-config.token';
 
 /**
  * @description

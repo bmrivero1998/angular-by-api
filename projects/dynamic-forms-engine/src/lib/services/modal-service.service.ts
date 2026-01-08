@@ -7,9 +7,9 @@ import {
   Type,
 } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
-import { DynamicContentService } from './dynamic-content.service';
-import { ModalFrameComponent } from '../components/modal-frame/modal-frame.component'; // Crearemos este componente
+import { DynamicContentService } from './dynamic-content.service'; // Crearemos este componente
 import { ApiDrivenContent } from '../interfaces/DynamicContent.interface';
+import { ModalFrameComponent } from '../../../../../src/app/components/modal-frame/modal-frame.component';
 
 @Injectable({
   providedIn: 'root',

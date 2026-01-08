@@ -1,10 +1,11 @@
 import { Injectable } from '@angular/core';
-import { map, Observable } from 'rxjs';
+import { delay, map, Observable, of } from 'rxjs';
 import {
   ApiDrivenContent,
   DynamicApiResponse,
 } from '../interfaces/DynamicContent.interface';
 import { HttpClient } from '@angular/common/http';
+import { FORM_PRO_MOCK } from '../../../../../src/app/mocks/getContent.mock';
 
 @Injectable({
   providedIn: 'root',
@@ -50,4 +51,9 @@ export class DynamicContentService {
       })
     );
   }
+
+  getFormConfig(): Observable<ApiDrivenContent> {
+      // Simulamos un retraso de red de 1 segundo
+      return of(FORM_PRO_MOCK).pipe(delay(1000));
+    }
 }

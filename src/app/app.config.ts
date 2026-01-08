@@ -7,7 +7,8 @@ import {
 } from '@angular/common/http';
 
 import { routes } from './app.routes';
-import { MockErrorHandlerInterceptor } from './interceptors/mock-error-handler.interceptor';
+import { MockErrorHandlerInterceptor } from '../../projects/dynamic-forms-engine/src/lib/interceptors/mock-error-handler.interceptor';
+import { DYNAMIC_CONFIG } from '../../projects/dynamic-forms-engine/src/lib/dynamic-config.token';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -15,9 +16,11 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideHttpClient(withInterceptorsFromDi()),
     {
-      provide: HTTP_INTERCEPTORS,
-      useClass: MockErrorHandlerInterceptor,
-      multi: true, // Es importante para permitir múltiples interceptores
-    },
+      provide: DYNAMIC_CONFIG,
+      useValue: {
+        errorClassName: 'is-invalid',
+        successClassName: 'is-valid'
+      }
+    }
   ],
 };

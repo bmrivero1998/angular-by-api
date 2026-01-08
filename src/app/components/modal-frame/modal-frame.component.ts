@@ -1,12 +1,10 @@
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
-import {
-  ApiDrivenContent,
-  DataBinding,
-  DynamicFormSubmited,
-} from '../../interfaces/DynamicContent.interface';
-import { DynamicViewerComponent } from '../dynamic-viewer/dynamic-viewer.component';
+
+import { DynamicViewerComponent } from '../../../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
+
 import { CommonModule } from '@angular/common';
+import { ApiDrivenContent, DataBinding, DynamicFormSubmited } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
 
 @Component({
   selector: 'app-modal-frame',

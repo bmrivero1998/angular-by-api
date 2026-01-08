@@ -1,7 +1,8 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule, NgClass } from '@angular/common';
 import { Subscription } from 'rxjs';
-import { Toast, ToastService } from '../../services/toast.service';
+import { Toast, ToastService } from '../../../../projects/dynamic-forms-engine/src/lib/services/toast.service';
+
 
 declare var bootstrap: any;
 

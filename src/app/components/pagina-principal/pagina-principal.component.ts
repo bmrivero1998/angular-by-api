@@ -1,16 +1,13 @@
+import { CommonModule } from '@angular/common';
 import { AfterViewInit, Component, OnDestroy, OnInit } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 import { Router } from '@angular/router';
-import {
-  ApiDrivenContent,
-  DynamicClickPayload,
-} from '../../interfaces/DynamicContent.interface';
-import { CommonModule } from '@angular/common';
-import { DynamicViewerComponent } from '../dynamic-viewer/dynamic-viewer.component';
-import { finalize, Observable, take, tap } from 'rxjs';
-import { DynamicViewerService } from '../../services/dynamic-viewer.service';
-import { ModalService } from '../../services/modal-service.service';
-import { ToastService } from '../../services/toast.service';
+import { Observable, tap, finalize, take } from 'rxjs';
+import { DynamicViewerComponent } from '../../../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
+import { ApiDrivenContent, DynamicClickPayload } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
+import { DynamicViewerService } from '../../../../projects/dynamic-forms-engine/src/lib/services/dynamic-viewer.service';
+import { ModalService } from '../../../../projects/dynamic-forms-engine/src/lib/services/modal-service.service';
+import { ToastService } from '../../../../projects/dynamic-forms-engine/src/lib/services/toast.service';
 
 @Component({
   selector: 'app-pagina-principal',
