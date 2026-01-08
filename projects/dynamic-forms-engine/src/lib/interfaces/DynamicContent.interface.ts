@@ -60,6 +60,9 @@ export interface DynamicClickPayload {
   payload?: any; // Cualquier dato adicional que se quiera enviar con el clic
   formId?: string; // Un ID de formulario asociado al clic, si aplica
   formData?: { [key: string]: any }; // Datos del formulario asociados al clic, si aplica
+  // --- MEJORAS PRO: Metadatos de estado ---
+  formIsValid?: boolean; // Indica si el formulario es válido en el momento del clic
+  formErrors?: any; // Lista de errores actuales (si es inválido)
 }
 
 export interface DynamicFormSubmited {

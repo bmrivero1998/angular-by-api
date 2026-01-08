@@ -13,6 +13,12 @@ export interface FormFieldMapping {
   }>;
   keyFilter?: string; // Filtro de clave para el campo, si es necesario
   inputMask?: string; // Máscara de entrada para el campo, si es necesario
+  hideIf?: string; // Ejemplo: "form.tipoPersona === 'FISICA'"
+  showIf?: string; // Ejemplo: "form.edad >= 18"
+  // --- MEJORAS PARA WEB COMPONENTS ---
+  valueProperty?: string; // Propiedad del elemento a sincronizar. Por defecto 'value'
+  useEventDetail?: boolean; // Si es true, busca el valor en event.detail en lugar de event.target.value
+  asyncValidator?: AsyncValidatorConfig; // Nueva propiedad PRO
 }
 
 export interface ButtonConfig {
@@ -30,4 +36,13 @@ export interface ButtonConfig {
    * Ejemplos de strings: 'formIsInvalid', 'formIsPristine', 'formIsInvalidOrPristine'
    */
   disableWhen?: string | ((form: FormGroup) => boolean);
+}
+
+
+export interface AsyncValidatorConfig {
+  endpoint: string;      // Ruta relativa a la apiUrl (ej: '/validate-user')
+  method: 'GET' | 'POST';
+  debounceTime?: number; // Tiempo de espera en ms (default: 500)
+  errorKey: string;      // Clave del error (ej: 'userTaken')
+  message: string;       // Mensaje a mostrar si falla
 }

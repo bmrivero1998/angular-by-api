@@ -12,9 +12,11 @@ import * as DOMPurify from 'dompurify';
 import { DYNAMIC_CONFIG } from '../../../projects/dynamic-forms-engine/src/lib/dynamic-config.token';
 
 /**
- * Interceptor de HTTP que sanitiza automáticamente los campos de HTML y CSS
- * provenientes de las respuestas de la API para prevenir ataques de XSS y de
- * inyección de CSS.
+ * @description
+ * Interceptor de seguridad encargado de limpiar respuestas de la API.
+ * Protege la aplicación contra ataques XSS (HTML) e inyecciones de estilos (CSS).
+ * * Utiliza un motor de recursividad para procesar objetos complejos y aplica
+ * políticas de seguridad basadas en el token de configuración global.
  */
 @Injectable()
 export class HtmlSanitizerInterceptor implements HttpInterceptor {
@@ -25,11 +27,13 @@ export class HtmlSanitizerInterceptor implements HttpInterceptor {
   constructor() {}
 
   /**
-   * Intercepta las respuestas HTTP, clona el cuerpo de la respuesta y llama
-   * al método de sanitización antes de pasar la respuesta al resto de la aplicación.
-   * @param request La petición HTTP saliente.
-   * @param next El siguiente manejador en la cadena de interceptores.
-   * @returns Un Observable del evento HTTP, con el cuerpo de la respuesta sanitizado.
+   * @description
+   * Intercepta el flujo de respuesta para clonar y sanitizar el cuerpo.
+   * Asegura que los datos procesados por los componentes visuales estén libres
+   * de vectores de ataque antes de su renderizado en el Shadow DOM.
+   * * @param request - Petición HTTP saliente.
+   * @param next - Siguiente eslabón en la cadena de procesamiento.
+   * @returns Observable con la respuesta sanitizada.
    */
   intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     return next.handle(request).pipe(
@@ -45,9 +49,11 @@ export class HtmlSanitizerInterceptor implements HttpInterceptor {
   }
 
   /**
-   * Recorre recursivamente un objeto o array y sanitiza las propiedades
-   * que coinciden con las listas `htmlFields` y `cssFields`.
-   * @param data El objeto o array a procesar.
+   * @description
+   * Analiza y limpia propiedades de forma recursiva. 
+   * Identifica campos de HTML para procesarlos con DOMPurify y campos de CSS
+   * para aplicar filtros de seguridad específicos contra inyecciones externas.
+   * * @param data - Datos a inspeccionar (objeto o colección).
    */
   private sanitizeObjectProperties(data: any): void {
     if (typeof data !== 'object' || data === null) {
@@ -68,20 +74,44 @@ export class HtmlSanitizerInterceptor implements HttpInterceptor {
           try {
             const rawHtml = JSON.parse(value);
             const sanitizedHtml = DOMPurify.default.sanitize(rawHtml, {
-            ALLOWED_TAGS: this.config?.allowedHtmlTags || ['b', 'i', 'em', 'strong', 'a', 'div', 'p', 'input']
-          });
+              ALLOWED_TAGS: this.config?.allowedHtmlTags || ['b', 'i', 'em', 'strong', 'a', 'div', 'p', 'input']
+            });
             data[key] = JSON.stringify(sanitizedHtml);
           } catch (e) {
             console.error(`Error al procesar el campo HTML '${key}'.`, e);
           }
-        
         } else if (this.cssFields.has(key) && typeof value === 'string') {
-          // TODO: Sanitizar CSS si es necesario
-          
+          try {
+            const rawCss = JSON.parse(value);
+            data[key] = JSON.stringify(this.sanitizeCss(rawCss));
+          } catch (e) {
+            console.error(`Error al procesar el campo CSS '${key}'.`, e);
+          }
         } else {
           this.sanitizeObjectProperties(value);
         }
       }
     }
+  }
+
+  /**
+   * @description
+   * Motor de limpieza de CSS diseñado para eliminar directivas peligrosas.
+   * * Bloquea @import (carga de archivos externos), expression() (ejecución de scripts)
+   * y sanitiza el uso de url() para evitar fugas de datos o rastreo no deseado.
+   * * @param css - Cadena de estilos original.
+   * @returns Cadena de estilos sanitizada.
+   */
+  private sanitizeCss(css: string): string {
+    let cleanCss = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    cleanCss = cleanCss.replace(/@import\s+[^;]+;/gi, '');
+    cleanCss = cleanCss.replace(/expression\s*\([^)]*\)/gi, 'none');
+    cleanCss = cleanCss.replace(/behavior\s*:[^;]+/gi, '');
+    
+    if (this.config?.disallowExternalCssResources) {
+      cleanCss = cleanCss.replace(/url\s*\(\s*['"]?http[^)]+\)/gi, 'none');
+    }
+
+    return cleanCss;
   }
 }

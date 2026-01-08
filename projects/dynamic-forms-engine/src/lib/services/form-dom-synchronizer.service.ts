@@ -1,7 +1,8 @@
-import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
+import { inject, Injectable, Renderer2, RendererFactory2 } from '@angular/core';
 import { FormGroup, FormControl, AbstractControl } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { FormFieldMapping } from '../models/form-field-mapping.model'; // Ajusta la ruta
+import { DYNAMIC_CONFIG } from '../dynamic-config.token';
 
 interface ManagedFormInstance {
   formGroup: FormGroup;
@@ -17,6 +18,10 @@ interface ManagedFormInstance {
 export class FormDomSynchronizerService {
   private renderer: Renderer2;
   private managedForms = new Map<string, ManagedFormInstance>();
+  private config = inject(DYNAMIC_CONFIG, { optional: true });
+  
+  private readonly ERROR_CLASSES = (this.config?.errorClassName || 'is-invalid').split(' ');
+  private readonly SUCCESS_CLASSES = (this.config?.successClassName || 'is-valid').split(' ');
 
   constructor(rendererFactory: RendererFactory2) {
     this.renderer = rendererFactory.createRenderer(null, null);
@@ -101,55 +106,45 @@ export class FormDomSynchronizerService {
   private setupDomToFormSync(
     control: FormControl,
     elements: NodeListOf<HTMLElement>,
-    mapping: FormFieldMapping,
+    mapping: FormFieldMapping
   ): Array<() => void> {
     const listeners: Array<() => void> = [];
-    const firstElement = elements[0] as
-      | HTMLInputElement
-      | HTMLSelectElement
-      | HTMLTextAreaElement;
-    const eventToListen =
-      mapping.eventType ||
-      (firstElement.type === 'checkbox' || firstElement.type === 'radio'
-        ? 'change'
-        : 'input');
-
-    if (firstElement.type === 'radio') {
-      elements.forEach((radioNode) => {
-        const radioElement = radioNode as HTMLInputElement;
-        const listener = this.renderer.listen(
-          radioElement,
-          eventToListen,
-          (event: Event) => {
-            const targetRadio = event.target as HTMLInputElement;
-            if (targetRadio.checked && control.value !== targetRadio.value) {
-              control.setValue(targetRadio.value, { emitEvent: true });
-            }
-          },
-        );
-        listeners.push(listener);
-      });
-    } else {
-      // Checkbox, text, select, textarea
-      const listener = this.renderer.listen(
-        firstElement,
-        eventToListen,
-        (event: Event) => {
-          const target = event.target as
-            | HTMLInputElement
-            | HTMLSelectElement
-            | HTMLTextAreaElement;
-          let value: any =
-            target.type === 'checkbox'
-              ? (target as HTMLInputElement).checked
-              : target.value;
-          if (control.value !== value) {
-            control.setValue(value, { emitEvent: true });
-          }
-        },
+    
+    elements.forEach((el) => {
+      // Determinamos el evento: Prioridad al configurado, luego al tipo de input
+      const eventToListen = mapping.eventType || (
+        el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')
+          ? 'change'
+          : 'input'
       );
-      listeners.push(listener);
-    }
+
+      const unlisten = this.renderer.listen(el, eventToListen, (event: Event) => {
+        let newValue: any;
+
+        // RUTA A: Web Component (Prioridad)
+        if (mapping.valueProperty) {
+          newValue = mapping.useEventDetail 
+            ? (event as CustomEvent).detail 
+            : (event.target as Record<string, any>)[mapping.valueProperty];
+        } 
+        // RUTA B: Elementos estándar (HTML5)
+        else if (el instanceof HTMLInputElement) {
+          if (el.type === 'checkbox') newValue = el.checked;
+          else if (el.type === 'radio') {
+            if (el.checked) newValue = el.value;
+            else return;
+          } else newValue = el.value;
+        } else if (el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+          newValue = el.value;
+        }
+
+        if (control.value !== newValue) {
+          control.setValue(newValue, { emitEvent: true });
+        }
+      });
+      listeners.push(unlisten);
+    });
+
     return listeners;
   }
 
@@ -188,120 +183,101 @@ export class FormDomSynchronizerService {
     return combinedSubscription;
   }
 
-  /**
-   * Actualiza todos los aspectos visuales y funcionales del DOM para un control específico
-   * basándose en el estado actual del AbstractControl.
+ /**
+   * Actualiza el estado visual (valor, clases de validación y estado habilitado)
+   * de los elementos del DOM asociados a un control.
+   * [PRO] Soporta Web Components y múltiples clases de Frameworks (Tailwind/Bootstrap).
    */
   private updateSingleControlDomState(
     control: AbstractControl,
     elements: NodeListOf<HTMLElement>,
     mapping: FormFieldMapping,
-    formContainer: HTMLElement,
+    formContainer: HTMLElement
   ): void {
     if (elements.length === 0) return;
-    const firstElement = elements[0] as
-      | HTMLInputElement
-      | HTMLSelectElement
-      | HTMLTextAreaElement;
 
-    // A. Actualizar Valor del DOM
-    if (firstElement.type === 'radio') {
-      elements.forEach((radioNode) => {
-        const radioElement = radioNode as HTMLInputElement;
-        this.renderer.setProperty(
-          radioElement,
-          'checked',
-          radioElement.value === control.value,
-        );
-      });
-    } else if (firstElement.type === 'checkbox') {
-      this.renderer.setProperty(firstElement, 'checked', !!control.value);
-    } else {
-      // Solo actualizar si es diferente para evitar quitar foco innecesariamente en algunos navegadores/casos
-      if (firstElement.value !== control.value) {
-        this.renderer.setProperty(
-          firstElement,
-          'value',
-          control.value === null || control.value === undefined
-            ? ''
-            : control.value,
-        );
-      }
-    }
-
-    // B. Actualizar Estado Habilitado/Deshabilitado y Clases/ARIA de Validación
     const isDisabled = control.disabled;
-    const isInvalidAndInteracted =
-      control.invalid && (control.dirty || control.touched);
-    const isValidAndInteracted =
-      control.valid && (control.dirty || control.touched);
+    const isInvalid = control.invalid && (control.dirty || control.touched);
+    const isValid = control.valid && (control.dirty || control.touched);
 
     elements.forEach((el) => {
+      if (mapping.valueProperty) {
+        this.renderer.setProperty(el, mapping.valueProperty, control.value);
+      } else if (el instanceof HTMLInputElement) {
+        if (el.type === 'radio') {
+          this.renderer.setProperty(el, 'checked', el.value === control.value);
+        } else if (el.type === 'checkbox') {
+          this.renderer.setProperty(el, 'checked', !!control.value);
+        } else if (el.value !== control.value) {
+          this.renderer.setProperty(el, 'value', control.value ?? '');
+        }
+      } else if (el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+        if (el.value !== control.value) {
+          this.renderer.setProperty(el, 'value', control.value ?? '');
+        }
+      }
+
       this.renderer.setProperty(el, 'disabled', isDisabled);
-      this.renderer.setAttribute(el, 'aria-disabled', isDisabled.toString());
-      this.renderer.setAttribute(
-        el,
-        'aria-invalid',
-        isInvalidAndInteracted.toString(),
-      );
+      
+      this.ERROR_CLASSES.forEach(cls => this.renderer.removeClass(el, cls));
+      this.SUCCESS_CLASSES.forEach(cls => this.renderer.removeClass(el, cls));
+      this.renderer.removeClass(el, 'disabled');
 
       if (isDisabled) {
         this.renderer.addClass(el, 'disabled');
-        this.renderer.removeClass(el, 'is-invalid');
-        this.renderer.removeClass(el, 'is-valid');
       } else {
-        this.renderer.removeClass(el, 'disabled');
-        if (isInvalidAndInteracted) {
-          this.renderer.addClass(el, 'is-invalid');
-          this.renderer.removeClass(el, 'is-valid');
-        } else if (isValidAndInteracted) {
-          this.renderer.addClass(el, 'is-valid');
-          this.renderer.removeClass(el, 'is-invalid');
-        } else {
-          this.renderer.removeClass(el, 'is-invalid');
-          this.renderer.removeClass(el, 'is-valid');
+        if (isInvalid) {
+          this.ERROR_CLASSES.forEach(cls => this.renderer.addClass(el, cls));
+        } else if (isValid) {
+          this.SUCCESS_CLASSES.forEach(cls => this.renderer.addClass(el, cls));
         }
       }
     });
 
-    // C. Actualizar Mensajes de Error Textuales
-    if (mapping.errorDisplaySelector) {
-      const errorElement = formContainer.querySelector(
-        mapping.errorDisplaySelector,
-      ) as HTMLElement | null;
-      if (errorElement) {
-        if (isInvalidAndInteracted) {
-          let errorMessage = 'Entrada inválida.'; // Default
-          if (control.errors) {
-            const firstErrorKey = Object.keys(control.errors)[0];
-            const validatorDef = mapping.validatorConfig?.find(
-              (v) => v.type.toLowerCase() === firstErrorKey.toLowerCase(),
-            );
-            if (validatorDef && validatorDef.message) {
-              errorMessage = validatorDef.message;
-            } else {
-              if (firstErrorKey === 'required')
-                errorMessage = 'Este campo es obligatorio.';
-              else if (firstErrorKey === 'email')
-                errorMessage = 'Formato de email incorrecto.';
-              else if (firstErrorKey === 'minlength')
-                errorMessage = `Mínimo ${control.errors['minlength']?.requiredLength} caracteres.`;
-              else if (firstErrorKey === 'maxlength')
-                errorMessage = `Máximo ${control.errors['maxlength']?.requiredLength} caracteres.`;
-              else if (firstErrorKey === 'pattern')
-                errorMessage = 'El formato no es válido.';
-              else if (firstErrorKey === 'requiredtrue')
-                errorMessage = 'Debes seleccionar esta opción.';
-              else errorMessage = `Error: ${firstErrorKey}`;
-            }
-          }
-          this.renderer.setProperty(errorElement, 'textContent', errorMessage);
-        } else {
-          this.renderer.setProperty(errorElement, 'textContent', '');
-        }
-      }
+    this.updateErrorMessages(control, mapping, formContainer);
+  }
+
+  /**
+   * Actualiza los mensajes de error para un control de formulario específico.
+   * * Busca el elemento HTML designado para mostrar errores (según el selector proporcionado
+   * en el mapping) y actualiza su contenido textual basándose en el estado de validación
+   * del control. Solo muestra mensajes cuando el control es inválido y ha sido interactuado.
+   * * @param control - Control del formulario cuyo estado de validación se evalúa.
+   * @param mapping - Configuración de mapeo con selectores y validadores.
+   * @param container - Elemento HTML contenedor donde se buscará el display de errores.
+   */
+ private updateErrorMessages(control: AbstractControl, mapping: FormFieldMapping, container: HTMLElement): void {
+  if (!mapping.errorDisplaySelector) return;
+  
+  const errorEl = container.querySelector(mapping.errorDisplaySelector);
+  if (errorEl instanceof HTMLElement) {
+    const isInvalid = control.invalid && (control.dirty || control.touched);
+    
+    if (isInvalid && control.errors) {
+      const firstErrorKey = Object.keys(control.errors)[0].toLowerCase();
+      
+      const apiCustomMessage = mapping.validatorConfig?.find(
+        v => v.type.toLowerCase() === firstErrorKey
+      )?.message;
+
+      const globalDefaultMessage = this.config?.defaultErrorMessages?.[firstErrorKey];
+
+      const systemDefaults: Record<string, string> = {
+        required: 'Este campo es obligatorio.',
+        email: 'Formato de correo inválido.',
+        minlength: 'El texto es muy corto.',
+        generic: 'Entrada inválida.'
+      };
+
+      const finalMessage = apiCustomMessage || globalDefaultMessage || systemDefaults[firstErrorKey] || systemDefaults['generic'];
+
+      this.renderer.setProperty(errorEl, 'textContent', finalMessage);
+    } else {
+      this.renderer.setProperty(errorEl, 'textContent', '');
     }
   }
+}
+
   /**
    * Desconecta un formulario específico gestionado por este servicio.
    */

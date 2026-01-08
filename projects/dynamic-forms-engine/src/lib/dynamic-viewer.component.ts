@@ -12,6 +12,7 @@ import {
   Output,
   EventEmitter,
   ViewEncapsulation,
+  inject,
 } from '@angular/core';
 import {
   FormBuilder,
@@ -28,6 +29,8 @@ import { DataBinding, DynamicFormSubmited, DynamicClickPayload } from './interfa
 import { FormFieldMapping, ButtonConfig } from './models/form-field-mapping.model';
 import { DynamicInyectCssService } from './services/dynamic-inyect-css.service';
 import { FormDomSynchronizerService } from './services/form-dom-synchronizer.service';
+import { DYNAMIC_CONFIG } from './dynamic-config.token';
+import { DynamicValidationService } from './services/dynamic-validation.service';
 
 
 /**
@@ -64,7 +67,7 @@ import { FormDomSynchronizerService } from './services/form-dom-synchronizer.ser
   styleUrls: ['./dynamic-viewer.component.css'],
   encapsulation: ViewEncapsulation.ShadowDom,
 })
-export class DynamicViewerComponent
+export class DynamicViewerComponent <T = any>
   implements OnInit, OnChanges, AfterViewInit, OnDestroy
 {
   @Input() contentId!: string;
@@ -77,7 +80,7 @@ export class DynamicViewerComponent
   @Input() parentForm?: FormGroup;
   @Input() dataBindings?: DataBinding[];
 
-  @Output() formSubmitted = new EventEmitter<DynamicFormSubmited>();
+  @Output() formSubmitted = new EventEmitter<{ formId: string, data: T }>();
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
   @Output() componentError = new EventEmitter<string>();
 
@@ -91,6 +94,7 @@ export class DynamicViewerComponent
   private activeMutationObserver: MutationObserver | null = null;
   private subscriptions = new Subscription();
   private domListeners: Array<() => void> = [];
+  private config = inject(DYNAMIC_CONFIG, { optional: true });
 
   @ViewChild('htmlContainer') htmlContainerRef!: ElementRef<HTMLDivElement>;
 
@@ -99,7 +103,8 @@ export class DynamicViewerComponent
     private cssInjector: DynamicInyectCssService,
     private formBuilder: FormBuilder,
     private synchronizer: FormDomSynchronizerService,
-    private renderer: Renderer2
+    private renderer: Renderer2,
+    private validationService: DynamicValidationService
   ) {}
 
   ngOnInit(): void {
@@ -228,6 +233,21 @@ export class DynamicViewerComponent
     this.toggleElementBySelector(selector, false);
   }
 
+  /**
+   * [PRO] Método para obtener los valores ya casteados al tipo esperado.
+   */
+  public getFormValues(): T {
+    return this.dynamicForm.getRawValue() as T;
+  }
+
+    /**
+   * [PRO] Acceso rápido a los valores del formulario.
+   * Permite hacer: viewer.values.nombre en lugar de viewer.dynamicForm.get('nombre').value
+   */
+  get values(): T {
+    return this.dynamicForm.value as T;
+  }
+
   // --- LÓGICA DE CONSTRUCCIÓN Y SINCRONIZACIÓN ---
 
   /**
@@ -293,8 +313,16 @@ export class DynamicViewerComponent
       const validators = (map.validatorConfig || [])
         .map((config) => this.getValidator(config.type, config.value))
         .filter((v) => v) as ValidatorFn[];
-      groupConfig[map.controlName] = [map.defaultValue || '', validators];
+      const asyncValidators = map.asyncValidator 
+        ? [this.validationService.createAsyncValidator(map.asyncValidator)] 
+        : [];
+
+      groupConfig[map.controlName] = [
+        map.defaultValue || '', 
+        { validators, asyncValidators }
+      ];  
     });
+    
     this.dynamicForm = this.formBuilder.group(groupConfig);
   }
 
@@ -475,12 +503,18 @@ export class DynamicViewerComponent
 
         if (button) {
           const action = button.getAttribute('data-dynamic-action');
+          const formData = this.isForm ? this.dynamicForm.getRawValue() : null;
+          const formIsValid = this.isForm ? this.dynamicForm.valid : true;
           if (action) {
             this.actionClicked.emit({
               action,
               sourceId: this.formId || this.contentId,
               clickedElement: button,
               originalEvent: event,
+              // --- Metadatos PRO ---
+              formData: formData,
+              formIsValid: formIsValid ,
+              formId: this.formId || this.contentId
             });
           }
         }
@@ -839,32 +873,34 @@ export class DynamicViewerComponent
    * sido tocado (ya sea por el usuario o por el programa).
    */
   private subscribeAndSetErrorVisualsOnInputs(): void {
-    if (!this.formMappings) return;
-    this.formMappings.forEach((mapping) => {
-      const control = this.dynamicForm.get(mapping.controlName);
-      const inputElement = this.htmlContainerRef.nativeElement.querySelector(
-        mapping.domSelector
-      ) as HTMLElement;
+  if (!this.formMappings) return;
 
-      if (control && inputElement) {
-        const sub = control.statusChanges.subscribe(() => {
-          const isInvalid =
-            control.invalid && (control.dirty || control.touched);
-          this.renderer.setProperty(
-            inputElement,
-            'classList.is-invalid',
-            isInvalid
-          );
-          this.renderer.setProperty(
-            inputElement,
-            'classList.is-valid',
-            !isInvalid && (control.dirty || control.touched)
-          );
-        });
-        this.subscriptions.add(sub);
-      }
-    });
-  }
+  const errorClasses = (this.config?.errorClassName || 'is-invalid').split(' ');
+  const successClasses = (this.config?.successClassName || 'is-valid').split(' ');
+
+  this.formMappings.forEach((mapping) => {
+    const control = this.dynamicForm.get(mapping.controlName);
+    const inputElement = this.htmlContainerRef.nativeElement.querySelector(mapping.domSelector) as HTMLElement;
+
+    if (control && inputElement) {
+      const sub = control.statusChanges.subscribe(() => {
+        const isInvalid = control.invalid && (control.dirty || control.touched);
+        const isValid = control.valid && (control.dirty || control.touched);
+
+        // Limpiar clases
+        errorClasses.forEach(cls => this.renderer.removeClass(inputElement, cls));
+        successClasses.forEach(cls => this.renderer.removeClass(inputElement, cls));
+
+        if (isInvalid) {
+          errorClasses.forEach(cls => this.renderer.addClass(inputElement, cls));
+        } else if (isValid) {
+          successClasses.forEach(cls => this.renderer.addClass(inputElement, cls));
+        }
+      });
+      this.subscriptions.add(sub);
+    }
+  });
+}
 
   /**
    * Busca y guarda en memoria los elementos HTML que coinciden con los selectores
@@ -898,14 +934,21 @@ export class DynamicViewerComponent
    */
   private setupFormSubscriptions(): void {
     if (!this.isForm) return;
-    const sub = this.dynamicForm.valueChanges.subscribe(() =>
-      this.updateButtonStates()
-    );
-    const statusSub = this.dynamicForm.statusChanges.subscribe(() =>
-      this.updateButtonStates()
-    );
+
+
+    const updateAll = () => {
+      this.updateButtonStates();
+      this.applyConditionalLogic();
+    };
+
+    const sub = this.dynamicForm.valueChanges.subscribe(updateAll);
+    const statusSub = this.dynamicForm.statusChanges.subscribe(updateAll);
+
     this.subscriptions.add(sub);
     this.subscriptions.add(statusSub);
+
+
+    setTimeout(() => updateAll(), 0);
   }
 
   // --- MÉTODOS AUXILIARES ---
@@ -980,6 +1023,8 @@ export class DynamicViewerComponent
               sourceId: this.contentId,
               clickedElement: link,
               originalEvent: event,
+              formData: this.isForm ? this.dynamicForm.getRawValue() : null,
+              formIsValid: this.isForm ? this.dynamicForm.valid : false
             });
           }
         });
@@ -1026,6 +1071,60 @@ export class DynamicViewerComponent
       (value) => value === null || value === undefined || value === ''
     );
   }
+
+  /**
+   * @description
+   * [PRO] Ejecuta la lógica condicional del formulario en tiempo real.
+   * * Esta función recorre los mapeos de campos buscando propiedades `showIf` o `hideIf`.
+   * Si se cumple una condición, realiza una sincronización atómica:
+   * 1. **Visual**: Oculta o muestra los elementos en el DOM usando `display: none`.
+   * 2. **Estado**: Habilita o deshabilita el `FormControl` de Angular para asegurar que 
+   * los campos ocultos no afecten la validez del formulario ni se envíen en el payload.
+   * * @private
+   * @memberof DynamicViewerComponent
+   */
+
+  private applyConditionalLogic(): void {
+  this.formMappings?.forEach(mapping => {
+    if (mapping.hideIf || mapping.showIf) {
+      const elements = this.htmlContainerRef.nativeElement.querySelectorAll(mapping.domSelector);
+      
+      let shouldHide = false;
+      if (mapping.hideIf) shouldHide = this.evaluateCondition(mapping.hideIf);
+      if (mapping.showIf) shouldHide = !this.evaluateCondition(mapping.showIf);
+
+      elements.forEach((el: any) => {
+        this.renderer.setStyle(el, 'display', shouldHide ? 'none' : '');
+        const control = this.dynamicForm.get(mapping.controlName);
+        if (shouldHide && control?.enabled) control.disable({ emitEvent: false });
+        if (!shouldHide && control?.disabled) control.enable({ emitEvent: false });
+      });
+    }
+  });
+}
+
+   /**
+   * @description
+   * [PRO] Motor de evaluación de expresiones dinámicas.
+   * * Evalúa una cadena de texto como una expresión lógica de JavaScript utilizando el 
+   * estado actual de los valores del formulario (`getRawValue`) como contexto.
+   * * @param condition - La cadena con la expresión lógica a evaluar (ej: "edad >= 18").
+   * @returns `boolean` - Resultado de la evaluación. Devuelve `false` si hay un error de sintaxis.
+   * * @example
+   * // Si el formulario tiene { tipo: 'empresa' }
+   * evaluateCondition("tipo === 'empresa'") // true
+   * * @private
+   * @memberof DynamicViewerComponent
+   */
+  private evaluateCondition(condition: string): boolean {
+  try {
+    const form = this.dynamicForm.getRawValue();
+    return new Function('form', `with(form) { return ${condition}; }`)(form);
+  } catch (e) {
+    console.warn('Error evaluando condición:', condition, e);
+    return false;
+  }
+}
 
   /**
    * Emite un error al exterior del componente, mostrando un mensaje de warning
