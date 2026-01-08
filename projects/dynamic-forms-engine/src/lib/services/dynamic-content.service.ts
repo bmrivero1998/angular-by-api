@@ -1,11 +1,10 @@
-import { inject, Injectable } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { map, Observable } from 'rxjs';
 import {
   ApiDrivenContent,
   DynamicApiResponse,
 } from '../interfaces/DynamicContent.interface';
 import { HttpClient } from '@angular/common/http';
-import { DYNAMIC_CONFIG } from '../../../projects/dynamic-forms-engine/src/lib/dynamic-config.token';
 
 @Injectable({
   providedIn: 'root',
@@ -13,7 +12,6 @@ import { DYNAMIC_CONFIG } from '../../../projects/dynamic-forms-engine/src/lib/d
 export class DynamicContentService {
   private readonly apiUrl = 'http://localhost:3001/api/v2/vacancies';
   //private readonly apiUrl = 'http://localhost:3000/api/html-css/';
-  private config = inject(DYNAMIC_CONFIG, { optional: true });
   constructor(private readonly http: HttpClient) {}
 
   /**

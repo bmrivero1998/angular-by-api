@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import {
   HttpEvent,
   HttpHandler,
@@ -9,6 +9,7 @@ import {
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import * as DOMPurify from 'dompurify';
+import { DYNAMIC_CONFIG } from '../../../projects/dynamic-forms-engine/src/lib/dynamic-config.token';
 
 /**
  * Interceptor de HTTP que sanitiza automáticamente los campos de HTML y CSS
@@ -17,7 +18,7 @@ import * as DOMPurify from 'dompurify';
  */
 @Injectable()
 export class HtmlSanitizerInterceptor implements HttpInterceptor {
-
+  private config = inject(DYNAMIC_CONFIG, { optional: true });
   private readonly htmlFields = new Set(['htmlComponent', 'plantillaHTML', 'html']);
   private readonly cssFields = new Set(['cssComponent', 'css']);
 
@@ -66,7 +67,9 @@ export class HtmlSanitizerInterceptor implements HttpInterceptor {
         if (this.htmlFields.has(key) && typeof value === 'string') {
           try {
             const rawHtml = JSON.parse(value);
-            const sanitizedHtml = DOMPurify.default.sanitize(rawHtml);
+            const sanitizedHtml = DOMPurify.default.sanitize(rawHtml, {
+            ALLOWED_TAGS: this.config?.allowedHtmlTags || ['b', 'i', 'em', 'strong', 'a', 'div', 'p', 'input']
+          });
             data[key] = JSON.stringify(sanitizedHtml);
           } catch (e) {
             console.error(`Error al procesar el campo HTML '${key}'.`, e);
