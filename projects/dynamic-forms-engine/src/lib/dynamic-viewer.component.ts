@@ -65,7 +65,7 @@ import { DynamicValidationService } from './services/dynamic-validation.service'
   imports: [CommonModule],
   template: ` <div #htmlContainer [innerHTML]="safeHtmlContent"></div> `,
   styleUrls: ['./dynamic-viewer.component.css'],
-  encapsulation: ViewEncapsulation.ShadowDom,
+  encapsulation: ViewEncapsulation.None,
 })
 export class DynamicViewerComponent <T = any>
   implements OnInit, OnChanges, AfterViewInit, OnDestroy

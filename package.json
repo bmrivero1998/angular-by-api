@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "build:bundle": "ng build --configuration production && node bundle.js",
-    "build:pro": "ng build --configuration production && node bundle.js"
+    "build:pro": "ng build --configuration production && node bundle.js",
+    "build:widget": "ng build --output-hashing=none && node build-elements.js"
   },
   "private": true,
   "dependencies": {
@@ -21,6 +22,7 @@
     "@angular/platform-browser-dynamic": "^19.2.0",
     "@angular/router": "^19.2.0",
     "bootstrap": "^5.3.6",
+    "crypto-js": "^4.2.0",
     "dompurify": "^3.2.6",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
@@ -30,6 +32,7 @@
     "@angular-devkit/build-angular": "^19.2.13",
     "@angular/cli": "^19.2.13",
     "@angular/compiler-cli": "^19.2.0",
+    "@types/crypto-js": "^4.2.2",
     "@types/dompurify": "^3.2.0",
     "@types/jasmine": "~5.1.0",
     "concat": "^1.0.3",

@@ -1,18 +1,18 @@
-import { createCustomElement } from '@angular/elements';
 import { createApplication } from '@angular/platform-browser';
+import { createCustomElement } from '@angular/elements';
+import { ApplicationConfig } from '@angular/core';
 import { appConfig } from './app/app.config';
-import { DynamicViewerComponent } from '../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
+import { UXDrivenViewerWidgetComponent } from './app/components/ux-driven-viewer/ux-driven-viewer.component';
 
+// Función para inicializar como Web Component
 (async () => {
-  // 1. Iniciamos el entorno de Angular sin cargar una aplicación completa
   const app = await createApplication(appConfig);
-
-  // 2. Convertimos el componente en un Elemento Personalizado
-  const dynamicViewerElement = createCustomElement(DynamicViewerComponent, {
-    injector: app.injector,
+  
+  // Convertimos el componente Angular a un Web Component nativo (HTML Tag)
+  const element = createCustomElement(UXDrivenViewerWidgetComponent, {
+    injector: app.injector
   });
 
-  // 3. Lo registramos en el navegador con un nombre de etiqueta único
-  // Esto permitirá usar <dynamic-viewer-element></dynamic-viewer-element> en cualquier sitio
-  customElements.define('dynamic-viewer-element', dynamicViewerElement);
+  // Definimos la etiqueta HTML personalizada
+  customElements.define('ux-driven-viewer', element);
 })();
