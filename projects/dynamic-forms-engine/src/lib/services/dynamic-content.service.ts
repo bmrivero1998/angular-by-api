@@ -10,11 +10,12 @@ import { FORM_PRO_MOCK } from '../../../../../src/app/mocks/getContent.mock';
 @Injectable({
   providedIn: 'root',
 })
+
+
 export class DynamicContentService {
   private readonly apiUrl = 'http://localhost:3001/api/v2/vacancies';
   //private readonly apiUrl = 'http://localhost:3000/api/html-css/';
   constructor(private readonly http: HttpClient) {}
-
   /**
    * Realiza una petición GET a la API para obtener el contenido dinámico.
    * El contenido se devuelve como un Observable de un array de objetos DynamicContentInterface,
@@ -22,38 +23,7 @@ export class DynamicContentService {
    * Si no se obtiene respuesta, se devuelve un array vacío.
    * @returns Observable<ApiDrivenContent[]>
    */
-  getContent(id: string): Observable<ApiDrivenContent[]> {
-    return this.http.get<DynamicApiResponse>(this.apiUrl + '/' + id).pipe(
-      map((response) => {
-        // Usa el operador map aquí
-        if (response && response.doc) {
-          const mapper: ApiDrivenContent[] = response.doc.map(
-            (item) =>
-              ({
-                configuracion: item?.url,
-                htmlComponent: item?.htmlComponent,
-                cssComponent: item?.cssComponent,
-                id_DocumentHTMLCSS: item?.id_DocumentHTMLCSS,
-                formId: item?.formId,
-                formMappings: item?.formMappings,
-                formInitialData: item?.formInitialData,
-                buttonConfigs: item?.buttonConfigs,
-                validators: item?.validators,
-                otros: {},
-                dataBindings: item?.dataBindings,
-                tableBindings: item?.tableBindings,
-                renderType: item?.renderType || 'static',
-              } as ApiDrivenContent)
-          );
-          return mapper;
-        }
-        return [];
-      })
-    );
+  getContent(id: string, branch?:string): Observable<any> {
+    return this.http.get<any>('https://uxdrivenworker.khiemdoh.com/viewer/'+id+'/main').pipe()
   }
-
-  getFormConfig(): Observable<ApiDrivenContent> {
-      // Simulamos un retraso de red de 1 segundo
-      return of(FORM_PRO_MOCK).pipe(delay(1000));
-    }
 }
