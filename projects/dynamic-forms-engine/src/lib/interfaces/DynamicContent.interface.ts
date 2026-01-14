@@ -94,3 +94,9 @@ export interface TableBindingColumn {
   header: string; // El texto que se mostrará en el <thead> (ej. 'Nombre')
   isHtml?: boolean; // Opcional: si el contenido es HTML y no texto plano
 }
+
+
+export interface DisplayableInAppComponent extends ApiDrivenContent {
+  // Hereda de ApiDrivenContent
+  safeHtml: SafeHtml;
+}

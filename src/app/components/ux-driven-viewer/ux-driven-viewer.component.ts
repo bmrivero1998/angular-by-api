@@ -1,12 +1,11 @@
 import { 
   Component, 
   Input, 
-  OnChanges, 
-  SimpleChanges, 
   Output, 
-  EventEmitter, 
-  inject,
-  ViewEncapsulation // IMPORTANTE
+  EventEmitter,
+  ViewEncapsulation, // IMPORTANTE
+  OnInit,
+  ChangeDetectorRef
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 // Ojo: Si es un microfrontend externo, usualmente el viewer gestiona su propio form interno
@@ -14,8 +13,9 @@ import { CommonModule } from '@angular/common';
 import { FormGroup } from '@angular/forms'; 
 
 import { DynamicViewerComponent } from '../../../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
-import { ApiDrivenContent, DynamicClickPayload } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
-import { EncryptionService } from '../../../../projects/dynamic-forms-engine/src/lib/services/encryption.service';
+import { ApiDrivenContent, DisplayableInAppComponent, DynamicClickPayload } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
+import { DynamicContentService } from '../../../../projects/dynamic-forms-engine/src/lib/services/dynamic-content.service';
+import { DomSanitizer } from '@angular/platform-browser';
 
 
 @Component({
@@ -24,65 +24,92 @@ import { EncryptionService } from '../../../../projects/dynamic-forms-engine/src
   imports: [CommonModule, DynamicViewerComponent],
   // ShadowDom asegura que tus estilos (Tailwind/Bootstrap) no se fuguen ni se rompan
   encapsulation: ViewEncapsulation.ShadowDom, 
-  template: `
-    <style>
-      @import "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css";
-      /* Aquí también podrías inyectar tu Tailwind compilado si es necesario */
-    </style>
-
-    <div class="ux-widget-container">
-      @if (decodedData) {
-        <app-dynamic-viewer
-          [contentId]="decodedData.id_DocumentHTMLCSS"
-          [htmlContentString]="decodedData.htmlComponent"
-          [cssContentString]="decodedData.cssComponent"
-          
-          [formId]="decodedData.formId || decodedData.id_DocumentHTMLCSS"
-          [formMappings]="decodedData.formMappings"
-          [formInitialData]="decodedData.formInitialData"
-          [buttonConfigs]="decodedData.buttonConfigs"
-          [dataBindings]="decodedData.dataBindings"
-          
-          (formSubmitted)="onFormSubmitted($event)"
-          (actionClicked)="onActionClicked($event)"
-          (componentError)="onComponentError($event)">
-        </app-dynamic-viewer>
-      } @else if (errorState) {
-        <div style="color: red; padding: 10px; border: 1px solid red;">
-          Error: Contenido protegido no válido.
-        </div>
-      }
-    </div>
-  `
+  templateUrl:'./ux-driven-viewer.component.html' 
 })
-export class UXDrivenViewerWidgetComponent implements OnChanges {
+export class UXDrivenViewerWidgetComponent implements OnInit {
   @Input({ required: true }) encryptedContent!: string;
-  
+  @Input() projectId?:string; // se implementa el uuid en caso de que el usuario unicamente quiera consumir el mfe directamente  
+  @Input() angularForm?:FormGroup;
+  @Input() selectedFramwork?: 'tailwind' | 'bootstrap' | 'custom' = 'custom';
+
   // Outputs normales de Angular se convierten en CustomEvents en Web Components
   @Output() formSubmitted = new EventEmitter<any>();
   @Output() actionClicked = new EventEmitter<any>();
   @Output() componentError = new EventEmitter<string>();
 
+  public displayableItems: DisplayableInAppComponent[] = [];
+
   decodedData: ApiDrivenContent | null = null;
   errorState = false;
-  private crypto = inject(EncryptionService);
+  public currentFramework: 'tailwind' | 'bootstrap' | 'custom' = 'custom';
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['encryptedContent'] && this.encryptedContent) {
-      this.processContent();
+  //Injectores para manejos de estados
+
+   constructor(
+    private dcs: DynamicContentService,
+    private sanitizer: DomSanitizer,
+    private cdr: ChangeDetectorRef,
+  ) {}
+
+  ngOnInit(): void {
+    this.loadDynamicContent(this?.projectId || null);
+  }
+
+
+  private loadDynamicContent(projectId: string | null): void {
+  if (!projectId) {
+    this.errorState = true;
+    return;
+  }
+
+  this.dcs.getContent(projectId).subscribe({
+    next: (res) => {
+      if (res && res.content) {
+        this.displayableItems = this.processApiResponse(res.content);
+        this.errorState = this.displayableItems.length === 0;
+        this.cdr.detectChanges();
+      } else {
+        this.errorState = true;
+      }
+    },
+    error: (err) => {
+      console.error("UXDriven Widget Error:", err);
+      this.errorState = true;
+      this.cdr.detectChanges();
+    }
+  });
+}
+
+  /**
+   * Transforma la respuesta del microservicio en objetos listos para renderizar.
+   * Incluye la sanitización de HTML para evitar bloqueos de seguridad de Angular.
+   */
+  processApiResponse(data: any): DisplayableInAppComponent[] {
+    try {
+      const rawData = typeof data === 'string' ? JSON.parse(data) : data;
+      
+      if (!Array.isArray(rawData)) {
+        console.error("Invalid format: Expected an array of components", rawData);
+        return [];
+      }
+
+      return rawData.map(item => ({
+        ...item,
+        // Sanitizamos el HTML aquí para que DisplayableInAppComponent sea válido
+        safeHtml: this.sanitizer.bypassSecurityTrustHtml(item.htmlComponent)
+      }));
+    } catch (error) {
+      console.error("Error processing dynamic content JSON:", error);
+      return [];
     }
   }
 
-  private processContent() {
-    this.errorState = false;
-    this.decodedData = null;
-    const result = this.crypto.decryptPayload(this.encryptedContent); // Tu servicio de desencriptación
-    if (result) {
-      this.decodedData = result as ApiDrivenContent;
-    } else {
-      this.errorState = true;
-      this.componentError.emit('Decryption failed');
-    }
+  get hasAForm():FormGroup | undefined{
+    return this.angularForm || undefined 
+  }
+
+  get framework():string{
+    return ''
   }
 
   onFormSubmitted(event: any) { this.formSubmitted.emit(event); }
