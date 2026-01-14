@@ -3,6 +3,7 @@ const concat = require('concat');
 
 (async function build() {
   const files = [
+   './dist/angular-by-api/browser/runtime.js',
     './dist/angular-by-api/browser/polyfills.js',
     './dist/angular-by-api/browser/main.js'
   ];
