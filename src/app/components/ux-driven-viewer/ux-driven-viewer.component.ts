@@ -27,10 +27,9 @@ import { DomSanitizer } from '@angular/platform-browser';
   templateUrl:'./ux-driven-viewer.component.html' 
 })
 export class UXDrivenViewerWidgetComponent implements OnInit {
-  @Input({ required: true }) encryptedContent!: string;
+  @Input() UxDrivenJson!: any;
   @Input() projectId?:string; // se implementa el uuid en caso de que el usuario unicamente quiera consumir el mfe directamente  
   @Input() angularForm?:FormGroup;
-  @Input() selectedFramwork?: 'tailwind' | 'bootstrap' | 'custom' = 'custom';
 
   // Outputs normales de Angular se convierten en CustomEvents en Web Components
   @Output() formSubmitted = new EventEmitter<any>();
@@ -41,7 +40,6 @@ export class UXDrivenViewerWidgetComponent implements OnInit {
 
   decodedData: ApiDrivenContent | null = null;
   errorState = false;
-  public currentFramework: 'tailwind' | 'bootstrap' | 'custom' = 'custom';
 
   //Injectores para manejos de estados
 
@@ -52,7 +50,12 @@ export class UXDrivenViewerWidgetComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadDynamicContent(this?.projectId || null);
+    if(this.projectId){
+       this.loadDynamicContent(this?.projectId || null);
+    }else if(this.UxDrivenJson){
+      this.generateData(this.UxDrivenJson)
+    }
+   
   }
 
 
@@ -65,9 +68,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit {
   this.dcs.getContent(projectId).subscribe({
     next: (res) => {
       if (res && res.content) {
-        this.displayableItems = this.processApiResponse(res.content);
-        this.errorState = this.displayableItems.length === 0;
-        this.cdr.detectChanges();
+        this.generateData(res.content)
       } else {
         this.errorState = true;
       }
@@ -79,6 +80,12 @@ export class UXDrivenViewerWidgetComponent implements OnInit {
     }
   });
 }
+
+ private generateData(json:any){
+   this.displayableItems = this.processApiResponse(json);
+        this.errorState = this.displayableItems.length === 0;
+        this.cdr.detectChanges();
+ }
 
   /**
    * Transforma la respuesta del microservicio en objetos listos para renderizar.
@@ -108,9 +115,6 @@ export class UXDrivenViewerWidgetComponent implements OnInit {
     return this.angularForm || undefined 
   }
 
-  get framework():string{
-    return ''
-  }
 
   onFormSubmitted(event: any) { this.formSubmitted.emit(event); }
   onActionClicked(event: any) { this.actionClicked.emit(event); }

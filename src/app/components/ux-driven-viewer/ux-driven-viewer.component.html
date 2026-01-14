@@ -5,26 +5,24 @@
     box-sizing: border-box;
   }
 
-  /* 🛡️ FALLBACK GRID SYSTEM (Nativo) 
-     Este grid siempre está ahí, si el CSS de la IA viene roto,
-     estas reglas de 'rescate' mantienen la estructura de 12 columnas.
+  /* MALLA DE SEGURIDAD ESTRUCTURAL:
+     Aunque la IA mande el CSS, esto asegura que el contenedor 
+     del Widget siempre sea un Grid de 12 columnas por si acaso.
   */
   .ux-widget-container {
     display: grid !important;
     grid-template-columns: repeat(12, 1fr) !important;
-    gap: var(--ux-gap, 1rem); /* Gap por defecto */
+    gap: var(--ux-gap, 0px); /* El gap lo define la IA en su CSS */
     width: 100%;
   }
 
-  /* Aseguramos que los Bricks hijos no se desparramen */
   app-dynamic-viewer {
-    grid-column: span 12; /* Por defecto ocupan todo si la IA no dice lo contrario */
     display: block;
-    min-height: 50px; /* Evita colapsos visuales totales */
+    width: 100%;
   }
 </style>
 
-<div class="ux-widget-container" [class.grid-system]="currentFramework === 'custom'">
+<div class="ux-widget-container">
   @for (item of displayableItems; track item.id_DocumentHTMLCSS) {
     <app-dynamic-viewer
       [class]="'dynamic-' + item.id_DocumentHTMLCSS"
@@ -43,8 +41,8 @@
     </app-dynamic-viewer>
   } @empty {
     @if (errorState) {
-      <div style="color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 1rem; border-radius: 0.25rem;">
-        <strong>UXDriven Error:</strong> No se pudo cargar el contenido del proyecto.
+      <div style="color: #721c24; background-color: #f8d7da; padding: 1rem; border-radius: 0.5rem;">
+        <strong>UXDriven:</strong> Error cargando el componente dinámico.
       </div>
     }
   }
