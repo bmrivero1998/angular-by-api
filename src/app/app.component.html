@@ -1,1 +1,13 @@
-<router-outlet></router-outlet> <app-loader></app-loader>
+<div style="background: #333; min-height: 100vh; padding: 20px;">
+  <h2 style="color: white;">Debug del Motor</h2>
+
+  @if (formConfig) {
+    <app-dynamic-viewer
+      [contentId]="formConfig.id_DocumentHTMLCSS"
+      [htmlContentString]="formConfig.htmlComponent"
+      [cssContentString]="formConfig.cssComponent">
+    </app-dynamic-viewer>
+  } @else {
+    <h1 style="color: yellow;">Esperando datos de formConfig...</h1>
+  }
+</div>

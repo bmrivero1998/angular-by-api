@@ -1,0 +1,25 @@
+<div class="modal-backdrop" (click)="onClose()"></div>
+<div class="modal-dialog">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h5 class="modal-title" id="modal-title-display">Cargando...</h5>
+      <button type="button" class="btn-close" (click)="onClose()"></button>
+    </div>
+    <div class="modal-body">
+      <app-dynamic-viewer
+        *ngIf="contentConfig"
+        [contentId]="contentConfig.id_DocumentHTMLCSS"
+        [htmlContentString]="contentConfig.htmlComponent"
+        [cssContentString]="contentConfig.cssComponent"
+        [formMappings]="contentConfig.formMappings"
+        [formInitialData]="contentConfig.formInitialData"
+        [dataBindings]="dataBindings"
+        [buttonConfigs]="contentConfig.buttonConfigs"
+        [parentForm]="modalForm"
+        (formSubmitted)="onFormSubmit($event)"
+        (actionClicked)="onActionClick($event)"
+      >
+      </app-dynamic-viewer>
+    </div>
+  </div>
+</div>

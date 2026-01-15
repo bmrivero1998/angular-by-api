@@ -1,0 +1,49 @@
+<style>
+  :host { 
+    display: block; 
+    width: 100%; 
+    box-sizing: border-box;
+  }
+
+  /* MALLA DE SEGURIDAD ESTRUCTURAL:
+     Aunque la IA mande el CSS, esto asegura que el contenedor 
+     del Widget siempre sea un Grid de 12 columnas por si acaso.
+  */
+  .ux-widget-container {
+    display: grid !important;
+    grid-template-columns: repeat(12, 1fr) !important;
+    gap: var(--ux-gap, 0px); /* El gap lo define la IA en su CSS */
+    width: 100%;
+  }
+
+  app-dynamic-viewer {
+    display: block;
+    width: 100%;
+  }
+</style>
+
+<div class="ux-widget-container">
+  @for (item of displayableItems; track item.id_DocumentHTMLCSS) {
+    <app-dynamic-viewer
+      [class]="'dynamic-' + item.id_DocumentHTMLCSS"
+      [style.grid-column]="'span ' + (item.otros?.source?.colSpan || 12)"
+      [contentId]="item.id_DocumentHTMLCSS"
+      [htmlContentString]="item.htmlComponent"
+      [cssContentString]="item.cssComponent"
+      [formId]="item.formId || item.id_DocumentHTMLCSS"
+      [formMappings]="item.formMappings"
+      [formInitialData]="item.formInitialData"
+      [buttonConfigs]="item.buttonConfigs"
+      [parentForm]="hasAForm"
+      (formSubmitted)="onFormSubmitted($event)"
+      (actionClicked)="onActionClicked($event)"
+      (componentError)="onComponentError($event)">
+    </app-dynamic-viewer>
+  } @empty {
+    @if (errorState) {
+      <div style="color: #721c24; background-color: #f8d7da; padding: 1rem; border-radius: 0.5rem;">
+        <strong>UXDriven:</strong> Error cargando el componente dinámico.
+      </div>
+    }
+  }
+</div>
