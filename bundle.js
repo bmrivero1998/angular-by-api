@@ -1,43 +1,60 @@
 const fs = require('fs-extra');
-const concat = require('concat');
 const path = require('path');
 
 (async function build() {
-    // 1. Definimos las rutas. 
-    // OJO: Angular 17+ pone los archivos dentro de la carpeta /browser
-    const projectDist = path.join(__dirname, 'dist', 'angular-by-api', 'browser');
+    // --- CONFIGURACIÓN ---
+    // Asegúrate de que este nombre coincida con tu carpeta en dist
+    const folderName = 'dynamic-forms-engine'; 
+    const projectDist = path.join(__dirname, 'dist', folderName, 'browser'); 
+    
     const outputDir = path.join(__dirname, 'dist', 'bundle');
-    const outputFile = path.join(outputDir, 'dynamic-viewer-v1.js');
+    const outputFile = path.join(outputDir, 'dynamic-engine.js');
 
     try {
-        // Asegurar que existe la carpeta de salida
-        await fs.ensureDir(outputDir);
-
-        // 2. Leemos los archivos que realmente existen en el build
-        const files = await fs.readdir(projectDist);
-
-        // 3. Buscamos los archivos correctos ignorando el hash
-        const mainJs = files.find(f => f.startsWith('main-') && f.endsWith('.js'));
-        const polyfillsJs = files.find(f => f.startsWith('polyfills-') && f.endsWith('.js'));
-
-        if (!mainJs || !polyfillsJs) {
-            throw new Error('No se encontraron los archivos del build. ¿Ejecutaste ng build primero?');
+        if (!fs.existsSync(projectDist)) {
+            throw new Error(`❌ No encuentro la carpeta: ${projectDist}`);
         }
 
-        const filesToConcat = [
-            path.join(projectDist, polyfillsJs),
-            path.join(projectDist, mainJs)
-        ];
+        await fs.ensureDir(outputDir);
+        const files = await fs.readdir(projectDist);
 
-        // 4. Concatenamos todo en un único archivo
-        await concat(filesToConcat, outputFile);
+        const mainJs = files.find(f => f.startsWith('main') && f.endsWith('.js'));
+        const polyfillsJs = files.find(f => f.startsWith('polyfills') && f.endsWith('.js'));
 
-        console.log('\x1b[32m%s\x1b[0m', `--- BUNDLE CREADO CON ÉXITO ---`);
-        console.log(`Ubicación: ${outputFile}`);
-        console.log(`Archivos unidos: ${polyfillsJs} + ${mainJs}`);
+        if (!mainJs || !polyfillsJs) {
+            throw new Error('❌ Faltan archivos (main o polyfills). ¿Ejecutaste ng build?');
+        }
+
+        console.log(`📦 Procesando: ${mainJs}`);
+
+        // 1. Leemos los contenidos
+        const polyfillsContent = await fs.readFile(path.join(projectDist, polyfillsJs), 'utf8');
+        let mainContent = await fs.readFile(path.join(projectDist, mainJs), 'utf8');
+
+        // 2. EL TRUCO: Eliminamos los 'export' para que no rompan la IIFE
+        // Esto busca "export" seguido de cualquier cosa y lo reemplaza con un comentario vacío
+        // Nota: Es un regex simple pero efectivo para bundles minificados de Angular
+        mainContent = mainContent.replace(/^export\s+.*;?$/gm, ''); // Para exports en linea nueva
+        mainContent = mainContent.replace(/export\s*\{.*?\};?/g, ''); // Para export { ... }
+        
+        // 3. Empaquetamos
+        const bundleContent = `
+            /* --- POLYFILLS --- */
+            ${polyfillsContent}
+            
+            /* --- MAIN (Scope Aislado) --- */
+            (function() {
+                ${mainContent}
+            })();
+        `;
+
+        // 4. Guardamos
+        await fs.outputFile(outputFile, bundleContent);
+
+        console.log('\n✅ ¡ARREGLADO! Archivo generado sin exports:');
+        console.log(`👉 ${outputFile}`);
 
     } catch (err) {
-        console.error('\x1b[31m%s\x1b[0m', '--- ERROR EN EL BUNDLE ---');
         console.error(err);
         process.exit(1);
     }
