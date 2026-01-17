@@ -22,8 +22,6 @@ import { DomSanitizer } from '@angular/platform-browser';
   selector: 'ux-driven-viewer-widget', // Nuevo nombre de etiqueta para el widget
   standalone: true,
   imports: [CommonModule, DynamicViewerComponent],
-  // ShadowDom asegura que tus estilos (Tailwind/Bootstrap) no se fuguen ni se rompan
-  encapsulation: ViewEncapsulation.ShadowDom, 
   templateUrl:'./ux-driven-viewer.component.html' 
 })
 export class UXDrivenViewerWidgetComponent implements OnInit {
