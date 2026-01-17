@@ -1,25 +1,34 @@
-<div class="modal-backdrop" (click)="onClose()"></div>
-<div class="modal-dialog">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h5 class="modal-title" id="modal-title-display">Cargando...</h5>
-      <button type="button" class="btn-close" (click)="onClose()"></button>
-    </div>
-    <div class="modal-body">
-      <app-dynamic-viewer
-        *ngIf="contentConfig"
-        [contentId]="contentConfig.id_DocumentHTMLCSS"
-        [htmlContentString]="contentConfig.htmlComponent"
-        [cssContentString]="contentConfig.cssComponent"
-        [formMappings]="contentConfig.formMappings"
-        [formInitialData]="contentConfig.formInitialData"
-        [dataBindings]="dataBindings"
-        [buttonConfigs]="contentConfig.buttonConfigs"
-        [parentForm]="modalForm"
-        (formSubmitted)="onFormSubmit($event)"
-        (actionClicked)="onActionClick($event)"
-      >
-      </app-dynamic-viewer>
+<div class="modal-backdrop fade show" (click)="onClose()"></div>
+
+<div class="modal fade show d-block" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-dialog-centered"> <div class="modal-content">
+      
+      <div class="modal-header">
+        <h5 class="modal-title">{{ modalTitle }}</h5>
+        <button type="button" class="btn-close" (click)="onClose()"></button>
+      </div>
+
+      <div class="modal-body">
+        <app-dynamic-viewer
+          *ngIf="contentConfig"
+          [contentId]="contentConfig.id_DocumentHTMLCSS"
+          [htmlContentString]="contentConfig.htmlComponent"
+          [cssContentString]="contentConfig.cssComponent"
+          
+          [formMappings]="contentConfig.formMappings"
+          [formInitialData]="contentConfig.formInitialData"
+          
+          [dataBindings]="contentConfig.dataBindings || []"
+          [buttonConfigs]="contentConfig.buttonConfigs"
+          
+          [parentForm]="modalForm"
+          
+          (formSubmitted)="onFormSubmit($event)"
+          (actionClicked)="onActionClick($event)"
+        >
+        </app-dynamic-viewer>
+      </div>
+
     </div>
   </div>
 </div>

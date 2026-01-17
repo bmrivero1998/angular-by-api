@@ -24,6 +24,6 @@ export class DynamicContentService {
    * @returns Observable<ApiDrivenContent[]>
    */
   getContent(id: string, branch?:string): Observable<any> {
-    return this.http.get<any>('https://uxdrivenworker.khiemdoh.com/viewer/'+id+'/main').pipe()
+    return this.http.get<any>('https://uxdrivenworker.khiemdoh.com/viewer/'+id+'/main'+branch).pipe()
   }
 }

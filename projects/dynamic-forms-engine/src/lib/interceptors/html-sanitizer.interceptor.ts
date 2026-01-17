@@ -81,37 +81,11 @@ export class HtmlSanitizerInterceptor implements HttpInterceptor {
             console.error(`Error al procesar el campo HTML '${key}'.`, e);
           }
         } else if (this.cssFields.has(key) && typeof value === 'string') {
-          try {
-            const rawCss = JSON.parse(value);
-            data[key] = JSON.stringify(this.sanitizeCss(rawCss));
-          } catch (e) {
-            console.error(`Error al procesar el campo CSS '${key}'.`, e);
-          }
+        
         } else {
           this.sanitizeObjectProperties(value);
         }
       }
     }
-  }
-
-  /**
-   * @description
-   * Motor de limpieza de CSS diseñado para eliminar directivas peligrosas.
-   * * Bloquea @import (carga de archivos externos), expression() (ejecución de scripts)
-   * y sanitiza el uso de url() para evitar fugas de datos o rastreo no deseado.
-   * * @param css - Cadena de estilos original.
-   * @returns Cadena de estilos sanitizada.
-   */
-  private sanitizeCss(css: string): string {
-    let cleanCss = css.replace(/\/\*[\s\S]*?\*\//g, '');
-    cleanCss = cleanCss.replace(/@import\s+[^;]+;/gi, '');
-    cleanCss = cleanCss.replace(/expression\s*\([^)]*\)/gi, 'none');
-    cleanCss = cleanCss.replace(/behavior\s*:[^;]+/gi, '');
-    
-    if (this.config?.disallowExternalCssResources) {
-      cleanCss = cleanCss.replace(/url\s*\(\s*['"]?http[^)]+\)/gi, 'none');
-    }
-
-    return cleanCss;
   }
 }

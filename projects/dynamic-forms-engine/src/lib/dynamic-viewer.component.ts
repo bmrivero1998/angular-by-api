@@ -65,7 +65,6 @@ import { DynamicValidationService } from './services/dynamic-validation.service'
   imports: [CommonModule],
   template: ` <div #htmlContainer [innerHTML]="safeHtmlContent"></div> `,
   styleUrls: ['./dynamic-viewer.component.css'],
-  encapsulation: ViewEncapsulation.None,
 })
 export class DynamicViewerComponent <T = any>
   implements OnInit, OnChanges, AfterViewInit, OnDestroy
@@ -161,8 +160,8 @@ export class DynamicViewerComponent <T = any>
   }
 
   ngOnDestroy(): void {
-    if (this.styleId) {
-      this.cssInjector.removeCss(this.styleId);
+    if (this.styleId && this.htmlContainerRef) {
+      this.cssInjector.removeCss(this.styleId, this.htmlContainerRef.nativeElement);
     }
     if (this.isForm) {
       this.parentForm?.removeControl(this.formId || this.contentId);
@@ -953,23 +952,27 @@ export class DynamicViewerComponent <T = any>
 
   // --- MÉTODOS AUXILIARES ---
 
-  /**
-   * Quita el estilo CSS previamente injectado (si lo había) y vuelve a injectar
-   * el contenido del estilo CSS en la etiqueta `<style>` correspondiente en el
-   * `<head>` del documento.
-   *
-   * Si no hay contenido de estilo CSS o no hay un ID de contenido, no hace
-   * nada.
+ /**
+   * Quita el estilo CSS previamente injectado y vuelve a injectar
+   * DENTRO del contenedor del componente para soportar Shadow DOM.
    */
   private injectCss(): void {
-    if (this.styleId) {
-      this.cssInjector.removeCss(this.styleId);
+    // Si ya existe un styleId, intentamos removerlo primero del contenedor actual
+    if (this.styleId && this.htmlContainerRef) {
+        this.cssInjector.removeCss(this.styleId, this.htmlContainerRef.nativeElement);
     }
-    if (this.cssContentString && this.contentId) {
+
+    if (this.cssContentString && this.contentId && this.htmlContainerRef) {
       this.styleId = this.cssInjector.generateStyleId(
         `viewer-${this.contentId}`
       );
-      this.cssInjector.injectCss(this.cssContentString, this.styleId);
+      
+      // CAMBIO CLAVE: Pasamos el nativeElement como tercer argumento
+      this.cssInjector.injectCss(
+          this.cssContentString, 
+          this.styleId, 
+          this.htmlContainerRef.nativeElement
+      );
     }
   }
 

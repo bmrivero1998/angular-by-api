@@ -2,9 +2,11 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, map, Observable, of, tap } from 'rxjs';
 import {
   ApiDrivenContent,
+  DisplayableInAppComponent,
   TableBindingColumn,
 } from '../interfaces/DynamicContent.interface'; // Ajusta la ruta
 import { DynamicContentService } from './dynamic-content.service';
+import { DomSanitizer } from '@angular/platform-browser';
 // Asumimos que el mock se importa para la demo
 
 @Injectable({
@@ -23,7 +25,9 @@ export class DynamicViewerService {
   public readonly dynamicContent$: Observable<ApiDrivenContent[]> =
     this._dynamicContent$.asObservable();
 
-  constructor(private dcs: DynamicContentService) {}
+  constructor(private dcs: DynamicContentService,
+    private sanitizer: DomSanitizer,
+  ) {}
 
   public getStaticContentValue(): ApiDrivenContent[] {
     return this._staticContent$.getValue();
@@ -38,9 +42,26 @@ export class DynamicViewerService {
    * y luego lo separa en streams estáticos y dinámicos.
    */
   public loadInitialContent(
-    pageIdentifier: string
+    pageIdentifier: string,
+    branch?: string
   ): Observable<ApiDrivenContent[]> {
-    return this.dcs.getContent(pageIdentifier).pipe(
+    return this.dcs.getContent(pageIdentifier, branch).pipe(
+     map((apiResponse: any) => {
+        try {
+          if (apiResponse && apiResponse.content && typeof apiResponse.content === 'string') {
+            return JSON.parse(apiResponse.content) as ApiDrivenContent[];
+          }
+          if (Array.isArray(apiResponse)) {
+            return apiResponse;
+          }
+          return [];
+        } catch (e) {
+          console.error('Error parseando JSON del DynamicContent:', e);
+          return [];
+        }
+      }),
+
+      // PASO 2: Procesar Tablas (Generar HTML de las tablas)
       map((payloads: ApiDrivenContent[]) => {
         return payloads.map((payload) => this._processTableBindings(payload));
       }),
@@ -58,11 +79,20 @@ export class DynamicViewerService {
     );
   }
 
+  /**
+   * Actualiza el contenido dinámico con el contenido cargado desde
+   * la API con el ID especificado.
+   * @param contentId El ID del contenido a actualizar.
+   * @param branch La rama del contenido a actualizar.
+   * @returns Un Observable que emite un array de objetos ApiDrivenContent una vez
+   * que se haya cargado el contenido dinámico.
+   */
   public updateDynamicContent(
-    contentId: string
+    contentId: string,
+    branch?: string
   ): Observable<ApiDrivenContent[]> {
     this._dynamicContent$.next([]);
-    return this.dcs.getContent(contentId).pipe(
+    return this.dcs.getContent(contentId, branch).pipe(
       map((payloads: ApiDrivenContent[]) => {
         return payloads.map((payload) => this._processTableBindings(payload));
       }),
@@ -75,11 +105,21 @@ export class DynamicViewerService {
     );
   }
 
+
+  /**
+   * Actualiza el contenido estático con el contenido cargado desde
+   * la API con el ID especificado.
+   * @param contentId El ID del contenido a actualizar.
+   * @param branch La rama del contenido a actualizar.
+   * @returns Un Observable que emite un array de objetos ApiDrivenContent una vez
+   * que se haya cargado el contenido estático.
+   */
   public updateStaticContent(
-    contentId: string
+    contentId: string,
+    branch?: string
   ): Observable<ApiDrivenContent[]> {
     this._staticContent$.next([]);
-    return this.dcs.getContent(contentId).pipe(
+    return this.dcs.getContent(contentId, branch).pipe(
       map((payloads: ApiDrivenContent[]) => {
         return payloads.map((payload) => this._processTableBindings(payload));
       }),
@@ -93,6 +133,13 @@ export class DynamicViewerService {
   }
 
   public updateTable(
+  /**
+   * Actualiza la tabla en el contenido dinámico o estático
+   * con el ID especificado.
+   * @param contentId El ID del contenido que contiene la tabla a actualizar.
+   * @param tableSelector El selector de la tabla a actualizar.
+   * @param newTableData Los nuevos datos de la tabla.
+   */
     contentId: string,
     tableSelector: string,
     newTableData: { columns?: TableBindingColumn[]; data?: any[] }
@@ -151,6 +198,13 @@ export class DynamicViewerService {
     }
   }
 
+/**
+ * Actualiza el valor de un binding en el contenido dinámico o estático
+ * con el ID especificado.
+ * @param contentId El ID del contenido que contiene el binding a actualizar.
+ * @param bindingSelector El selector del binding a actualizar.
+ * @param newValue El nuevo valor del binding.
+ */
   public updateBindingValue(
     contentId: string,
     bindingSelector: string,
@@ -190,6 +244,8 @@ export class DynamicViewerService {
     });
     this._dynamicContent$.next(newDynamicState);
   }
+
+
 
   public clearContent(): void {
     this._staticContent$.next([]);
@@ -251,4 +307,65 @@ export class DynamicViewerService {
     });
     return { ...content, htmlComponent: container.innerHTML };
   }
+
+
+    /**
+     * Transforma la respuesta del microservicio en objetos listos para renderizar.
+     * Incluye la sanitización de HTML para evitar bloqueos de seguridad de Angular.
+     */
+    processApiResponse(data: any): DisplayableInAppComponent[] {
+      try {
+        const rawData = typeof data === 'string' ? JSON.parse(data) : data;
+        
+        if (!Array.isArray(rawData)) {
+          console.error("Invalid format: Expected an array of components", rawData);
+          return [];
+        }
+  
+        return rawData.map(item => ({
+          ...item,
+          // Sanitizamos el HTML aquí para que DisplayableInAppComponent sea válido
+          safeHtml: this.sanitizer.bypassSecurityTrustHtml(item.htmlComponent)
+        }));
+      } catch (error) {
+        console.error("Error processing dynamic content JSON:", error);
+        return [];
+      }
+    }
+
+/**
+ * Permite cargar contenido directamente desde un objeto o string JSON local,
+ * sin realizar peticiones HTTP. Reutiliza la lógica de procesamiento de tablas.
+ */
+public setLocalContent(rawData: any): void {
+  let content: ApiDrivenContent[] = [];
+
+  try {
+    // CASO 1: Viene como String puro
+    if (typeof rawData === 'string') {
+      content = JSON.parse(rawData);
+    } 
+    // CASO 2: Viene como la respuesta de la API ({ content: "..." })
+    else if (rawData && rawData.content && typeof rawData.content === 'string') {
+      content = JSON.parse(rawData.content);
+    }
+    // CASO 3: Ya es el array de objetos
+    else if (Array.isArray(rawData)) {
+      content = rawData;
+    }
+  } catch (e) {
+    console.error('Error parseando JSON local:', e);
+    return;
+  }
+
+  // REUTILIZAMOS LA LÓGICA DE TABLAS (Importante para que se generen los HTMLs)
+  const processedPayloads = content.map(item => this._processTableBindings(item));
+
+  // SEPARAMOS Y ACTUALIZAMOS EL STORE
+  const staticContent = processedPayloads.filter(p => p.renderType === 'static');
+  const dynamicContent = processedPayloads.filter(p => p.renderType === 'dynamic');
+
+  this._staticContent$.next(staticContent);
+  this._dynamicContent$.next(dynamicContent);
+}
 }

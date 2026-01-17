@@ -10,33 +10,61 @@ export class DynamicInyectCssService {
 
   constructor(
     @Inject(DOCUMENT) private document: Document,
-
-    private rendererFactory: RendererFactory2,
+    rendererFactory: RendererFactory2
   ) {
     this.renderer = rendererFactory.createRenderer(null, null);
   }
 
-  public injectCss(cssContent: string, styleId: string): void {
-    this.removeCss(styleId); // Remueve si ya existe uno con el mismo ID
+  /**
+   * Ahora acepta un targetElement opcional. 
+   * Si se pasa, inyecta el estilo allí (útil para Shadow DOM).
+   * Si no, lo inyecta en el HEAD (comportamiento default).
+   */
+  public injectCss(cssContent: string, styleId: string, targetElement?: HTMLElement): void {
+    // 1. Limpieza previa (busca en el target o en el head)
+    this.removeCss(styleId, targetElement);
 
+    // 2. Crear el elemento style
     const styleElement = this.renderer.createElement('style');
     this.renderer.setAttribute(styleElement, 'id', styleId);
     this.renderer.appendChild(
       styleElement,
-      this.renderer.createText(cssContent),
+      this.renderer.createText(cssContent)
     );
-    this.renderer.appendChild(this.document.head, styleElement);
+
+    // 3. Inyectar en el destino correcto
+    if (targetElement) {
+      // Para Web Components: Inyectamos AL PRINCIPIO del contenedor para que no estorbe al HTML
+      if (targetElement.firstChild) {
+        this.renderer.insertBefore(targetElement, styleElement, targetElement.firstChild);
+      } else {
+        this.renderer.appendChild(targetElement, styleElement);
+      }
+    } else {
+      // Para App Normal: Inyectamos en el HEAD
+      this.renderer.appendChild(this.document.head, styleElement);
+    }
   }
 
-  removeCss(styleId: string): void {
-    const styleElement = this.document.getElementById(styleId);
+  removeCss(styleId: string, targetElement?: HTMLElement): void {
+    // Si hay target, buscamos dentro de él. Si no, usamos document.getElementById global
+    let styleElement: any;
+    
+    if (targetElement) {
+      styleElement = targetElement.querySelector(`style[id="${styleId}"]`);
+    } else {
+      styleElement = this.document.getElementById(styleId);
+    }
+
     if (styleElement) {
-      this.renderer.removeChild(this.document.head, styleElement);
+      // Remover del padre correcto
+      const parent = targetElement || this.document.head;
+      this.renderer.removeChild(parent, styleElement);
     }
   }
 
   public generateStyleId(componentId: string): string {
-    // Usar comillas invertidas (`) para la interpolación
-    return `<span class="math-inline">${this.styleElementIdPrefix}</span>${componentId}`;
+    // CORREGIDO: Sin basura HTML
+    return `${this.styleElementIdPrefix}${componentId}`;
   }
 }
