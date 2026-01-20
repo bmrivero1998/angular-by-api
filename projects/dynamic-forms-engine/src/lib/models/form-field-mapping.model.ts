@@ -41,8 +41,14 @@ export interface ButtonConfig {
 
 export interface AsyncValidatorConfig {
   endpoint: string;      // Ruta relativa a la apiUrl (ej: '/validate-user')
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'; // Método HTTP a usar
   debounceTime?: number; // Tiempo de espera en ms (default: 500)
   errorKey: string;      // Clave del error (ej: 'userTaken')
   message: string;       // Mensaje a mostrar si falla
+}
+
+export interface FilePayload {
+  controlName: string;
+  file: File;
+  formId: string;
 }

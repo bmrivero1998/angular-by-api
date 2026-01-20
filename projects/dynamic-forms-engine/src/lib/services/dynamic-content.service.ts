@@ -13,7 +13,6 @@ import { FORM_PRO_MOCK } from '../../../../../src/app/mocks/getContent.mock';
 
 
 export class DynamicContentService {
-  private readonly apiUrl = 'http://localhost:3001/api/v2/vacancies';
   //private readonly apiUrl = 'http://localhost:3000/api/html-css/';
   constructor(private readonly http: HttpClient) {}
   /**
@@ -23,7 +22,7 @@ export class DynamicContentService {
    * Si no se obtiene respuesta, se devuelve un array vacío.
    * @returns Observable<ApiDrivenContent[]>
    */
-  getContent(id: string, branch?:string): Observable<any> {
-    return this.http.get<any>('https://uxdrivenworker.khiemdoh.com/viewer/'+id+'/main'+branch).pipe()
+  getContent(apiURL:string): Observable<any> {
+    return this.http.get<any>(apiURL).pipe()
   }
 }

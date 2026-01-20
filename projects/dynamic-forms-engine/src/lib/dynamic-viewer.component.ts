@@ -26,7 +26,7 @@ import { Subscription } from 'rxjs';
 
 import { CommonModule } from '@angular/common';
 import { DataBinding, DynamicFormSubmited, DynamicClickPayload } from './interfaces/DynamicContent.interface';
-import { FormFieldMapping, ButtonConfig } from './models/form-field-mapping.model';
+import { FormFieldMapping, ButtonConfig, FilePayload } from './models/form-field-mapping.model';
 import { DynamicInyectCssService } from './services/dynamic-inyect-css.service';
 import { FormDomSynchronizerService } from './services/form-dom-synchronizer.service';
 import { DYNAMIC_CONFIG } from './dynamic-config.token';
@@ -82,6 +82,7 @@ export class DynamicViewerComponent <T = any>
   @Output() formSubmitted = new EventEmitter<{ formId: string, data: T }>();
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
   @Output() componentError = new EventEmitter<string>();
+  @Output() fileSelected = new EventEmitter<FilePayload>()
 
   safeHtmlContent!: SafeHtml;
   dynamicForm!: FormGroup;
@@ -386,10 +387,14 @@ export class DynamicViewerComponent <T = any>
           this.htmlContainerRef.nativeElement,
           this.formMappings
         );
+        this.injectNativeValidators();
         this.setupInjectedFormSubmitPrevention();
         this.subscribeAndSetErrorVisualsOnInputs();
         this.setupInjectedKeyFiltering();
         this.setupAutoFormatting();
+        this.syncDomAttributes();
+        this.setupFileInputs();
+
       }
       this.preventStandardNavigationLinks();
       this.setupInjectedActionClickListeners();
@@ -631,7 +636,7 @@ export class DynamicViewerComponent <T = any>
       (event: Event) => {
         const target = event.target as HTMLInputElement;
         const mapping = this.formMappings?.find(
-          (m) => m.controlName === target.name
+          (m) => m.controlName === target.name || m.domSelector === `#${target.id}`
         );
         if (mapping?.inputMask) {
           this.formatWithMask(target, mapping.inputMask);
@@ -1127,6 +1132,201 @@ export class DynamicViewerComponent <T = any>
     console.warn('Error evaluando condición:', condition, e);
     return false;
   }
+}
+
+
+/**
+ * Traduce la configuración de validadores lógicos a atributos físicos del HTML.
+ * Esto permite que el navegador impida escribir más caracteres de los permitidos (maxlength)
+ * o muestre el comportamiento nativo de campos requeridos.
+ */
+private injectNativeValidators(): void {
+  if (!this.formMappings || !this.htmlContainerRef) return;
+
+  this.formMappings.forEach((mapping) => {
+    // Buscamos el elemento físico
+    const element = this.htmlContainerRef.nativeElement.querySelector(
+      mapping.domSelector
+    ) as HTMLElement;
+
+    if (!element || !mapping.validatorConfig) return;
+
+    mapping.validatorConfig.forEach((validator) => {
+      // Usamos Renderer2 para ser "Angular Friendly"
+      switch (validator.type.toLowerCase()) {
+        case 'required':
+        case 'requiredtrue':
+          this.renderer.setAttribute(element, 'required', 'true');
+          // También es buena práctica poner el aria-required para accesibilidad
+          this.renderer.setAttribute(element, 'aria-required', 'true');
+          break;
+
+        case 'maxlength':
+          // ESTE es el que soluciona tu problema de que sigan escribiendo
+          this.renderer.setAttribute(element, 'maxlength', String(validator.value));
+          break;
+
+        case 'minlength':
+          this.renderer.setAttribute(element, 'minlength', String(validator.value));
+          break;
+
+        case 'min':
+          this.renderer.setAttribute(element, 'min', String(validator.value));
+          break;
+
+        case 'max':
+          this.renderer.setAttribute(element, 'max', String(validator.value));
+          break;
+
+        case 'pattern':
+          this.renderer.setAttribute(element, 'pattern', String(validator.value));
+          break;
+          
+        // Caso especial: Si validas email, podrías forzar el type="email"
+        // aunque esto es opcional si ya viene en el HTML
+        case 'email':
+            // Opcional: Solo si es un input
+            if (element.tagName === 'INPUT') {
+                this.renderer.setAttribute(element, 'type', 'email');
+            }
+            break;
+      }
+    });
+  });
+}
+
+
+/**
+ * Sincroniza los atributos del DOM con la configuración
+ * de los mapeos de campos.
+ * - Establece el atributo `name` en los elementos del DOM
+ *   si no lo tienen.
+ * - Establece el atributo `autocomplete` en `off` en los
+ *   elementos del DOM que tengan una máscara de entrada.
+ * @private
+ * @memberof DynamicViewerComponent
+ */
+private syncDomAttributes(): void {
+  if (!this.formMappings || !this.htmlContainerRef) return;
+
+  this.formMappings.forEach((mapping) => {
+    const element = this.htmlContainerRef.nativeElement.querySelector(
+      mapping.domSelector
+    ) as HTMLElement;
+
+    if (element) {
+      if (!element.getAttribute('name')) {
+        this.renderer.setAttribute(element, 'name', mapping.controlName);
+      }
+      
+      if (mapping.inputMask) {
+         this.renderer.setAttribute(element, 'autocomplete', 'off');
+      }
+    }
+  });
+}
+
+/**
+ * Manejo especial para Inputs de Archivo (The Final Boss).
+ * 1. No guarda el File en el Form (guarda true/null para validación).
+ * 2. Valida peso y extensión manualmente.
+ * 3. Emite el archivo al padre vía (fileSelected).
+ */
+private setupFileInputs(): void {
+  // Buscamos inputs file basados en los mapeos
+  const fileMappings = this.formMappings?.filter(m => {
+    const el = this.htmlContainerRef.nativeElement.querySelector(m.domSelector);
+    return el && el.getAttribute('type') === 'file';
+  });
+
+  if (!fileMappings) return;
+
+  fileMappings.forEach(mapping => {
+    const element = this.htmlContainerRef.nativeElement.querySelector(mapping.domSelector) as HTMLInputElement;
+    const errorElement = mapping.errorDisplaySelector 
+    ? this.htmlContainerRef.nativeElement.querySelector(mapping.errorDisplaySelector) as HTMLElement
+    : null;
+
+    if (!element) return;
+
+    // Listener para cuando el usuario selecciona archivo
+    this.setupListener(element, 'change', (event: any) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files ? input.files[0] : null;
+      const control = this.dynamicForm.get(mapping.controlName);
+
+      // Limpiar errores previos visuales
+      if (errorElement) errorElement.textContent = '';
+      this.renderer.removeClass(input, 'is-invalid');
+      this.renderer.removeClass(input, 'is-valid');
+
+      // 1. Si no hay archivo (y es requerido)
+      if (!file) {
+        if (this.hasValidator(mapping, 'required')) {
+           control?.setValue(null); // Invalidamos el form
+           control?.setErrors({ required: true });
+           this.renderer.addClass(input, 'is-invalid');
+        } else {
+           control?.setValue(null); // Si no es requerido, no pasa nada
+        }
+        return;
+      }
+
+      // 2. Validaciones de "Boss Final" (Tamaño y Tipo)
+      if (mapping.validatorConfig) {
+        // Validar Tamaño (Max Size en Bytes)
+        const maxSize = mapping.validatorConfig.find(v => v.type.toLowerCase() === 'maxsize');
+        if (maxSize && file.size > maxSize.value) {
+          this.showFileError(input, errorElement, maxSize.message || `Máximo ${maxSize.value} bytes`);
+          input.value = ''; // Reset físico del input
+          control?.setValue(null); // Invalidamos form
+          return;
+        }
+
+        // Validar Extensiones (FileType)
+        const fileType = mapping.validatorConfig.find(v => v.type.toLowerCase() === 'filetype');
+        if (fileType && !this.checkFileType(file, fileType.value)) {
+          this.showFileError(input, errorElement, fileType.message || `Formato no permitido`);
+          input.value = ''; 
+          control?.setValue(null);
+          return;
+        }
+      }
+
+      // 3. ¡ÉXITO! 
+      // A) Marcamos el form como válido (Shadow Value)
+      control?.setValue(true); 
+      control?.setErrors(null);
+      this.renderer.addClass(input, 'is-valid');
+
+      // B) Emitimos el archivo real al padre
+      this.fileSelected.emit({
+        controlName: mapping.controlName,
+        file: file,
+        formId: this.formId
+      });
+    });
+  });
+}
+
+// Helpers privados para el Boss Final
+private showFileError(input: HTMLElement, errorDisplay: HTMLElement | null, msg: string): void {
+  this.renderer.addClass(input, 'is-invalid');
+  if (errorDisplay) errorDisplay.textContent = msg;
+}
+
+private hasValidator(mapping: any, type: string): boolean {
+  return mapping.validatorConfig?.some((v: any) => v.type === type);
+}
+
+private checkFileType(file: File, accept: string): boolean {
+  const types = accept.split(',').map(t => t.trim().toLowerCase());
+  return types.some(type => {
+    if (type.startsWith('.')) return file.name.toLowerCase().endsWith(type);
+    // Soporte básico para mime types como image/*
+    if (type.endsWith('/*')) return file.type.startsWith(type.replace('/*', ''));
+    return file.type === type;
+  });
 }
 
   /**

@@ -23,6 +23,7 @@
       (actionClicked)="handleViewerActionClick($event)"
       (componentError)="componentError.emit($event)"
       (formSubmitted)="onFormSubmitted($event)"
+      (fileSelected)="fileSelected.emit($event)"
     >
     </app-dynamic-viewer>
   </ng-container>
@@ -51,6 +52,7 @@
         (actionClicked)="handleViewerActionClick($event)"
         (componentError)="componentError.emit($event)"
         (formSubmitted)="onFormSubmitted($event)"
+        (fileSelected)="fileSelected.emit($event)"
       >
       </app-dynamic-viewer>
     </ng-container>

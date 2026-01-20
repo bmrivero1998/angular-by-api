@@ -29,6 +29,9 @@ export class DynamicViewerService {
     private sanitizer: DomSanitizer,
   ) {}
 
+// =========================================================
+  // === GETTERS (Snapshots) ===
+  // =========================================================
   public getStaticContentValue(): ApiDrivenContent[] {
     return this._staticContent$.getValue();
   }
@@ -43,9 +46,8 @@ export class DynamicViewerService {
    */
   public loadInitialContent(
     pageIdentifier: string,
-    branch?: string
   ): Observable<ApiDrivenContent[]> {
-    return this.dcs.getContent(pageIdentifier, branch).pipe(
+    return this.dcs.getContent(pageIdentifier).pipe(
      map((apiResponse: any) => {
         try {
           if (apiResponse && apiResponse.content && typeof apiResponse.content === 'string') {
@@ -82,17 +84,15 @@ export class DynamicViewerService {
   /**
    * Actualiza el contenido dinámico con el contenido cargado desde
    * la API con el ID especificado.
-   * @param contentId El ID del contenido a actualizar.
-   * @param branch La rama del contenido a actualizar.
+   * @param apiURL El ID del contenido a actualizar.
    * @returns Un Observable que emite un array de objetos ApiDrivenContent una vez
    * que se haya cargado el contenido dinámico.
    */
   public updateDynamicContent(
-    contentId: string,
-    branch?: string
+    apiURL: string,
   ): Observable<ApiDrivenContent[]> {
     this._dynamicContent$.next([]);
-    return this.dcs.getContent(contentId, branch).pipe(
+    return this.dcs.getContent(apiURL).pipe(
       map((payloads: ApiDrivenContent[]) => {
         return payloads.map((payload) => this._processTableBindings(payload));
       }),
@@ -109,17 +109,15 @@ export class DynamicViewerService {
   /**
    * Actualiza el contenido estático con el contenido cargado desde
    * la API con el ID especificado.
-   * @param contentId El ID del contenido a actualizar.
-   * @param branch La rama del contenido a actualizar.
+   * @param apiURL la url del api para consumir
    * @returns Un Observable que emite un array de objetos ApiDrivenContent una vez
    * que se haya cargado el contenido estático.
    */
   public updateStaticContent(
-    contentId: string,
-    branch?: string
+    apiURL: string,
   ): Observable<ApiDrivenContent[]> {
     this._staticContent$.next([]);
-    return this.dcs.getContent(contentId, branch).pipe(
+    return this.dcs.getContent(apiURL).pipe(
       map((payloads: ApiDrivenContent[]) => {
         return payloads.map((payload) => this._processTableBindings(payload));
       }),

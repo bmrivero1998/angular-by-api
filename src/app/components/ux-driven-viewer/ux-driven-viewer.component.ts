@@ -18,6 +18,7 @@ import { DynamicViewerComponent } from '../../../../projects/dynamic-forms-engin
 import { ApiDrivenContent, DynamicClickPayload } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
 import { DynamicViewerService } from '../../../../projects/dynamic-forms-engine/src/lib/services/dynamic-viewer.service';
 import { ModalService } from '../../../../projects/dynamic-forms-engine/src/lib/services/modal-service.service';
+import { FilePayload } from '../../../../projects/dynamic-forms-engine/src/lib/models/form-field-mapping.model';
 
 @Component({
   selector: 'ux-driven-viewer-widget',
@@ -36,9 +37,8 @@ import { ModalService } from '../../../../projects/dynamic-forms-engine/src/lib/
 })
 export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChanges {
   
-  // --- INPUTS ---
-  @Input() projectId?: string; 
-  @Input() branch?: string = 'main';
+  @Input() apiURL!:string;
+
   
   // DATA: Objeto con valores para pre-llenar el formulario (ej: usuario a editar)
   @Input() data?: any; 
@@ -47,8 +47,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Input() UxDrivenJson?: any;
 
   // MODAL: Configuración para abrir el viewer como modal
-  @Input() modalProjectId?: string; 
-  @Input() modalBranch?: string = 'main';
+  @Input() modalApiUrl?:string
   @Input() modalData?: any;
   @Input() modalJson?: any;
 
@@ -62,6 +61,8 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Output() modalEmitted = new EventEmitter<any>();
   @Output() componentError = new EventEmitter<string>();
   @Output() loaded = new EventEmitter<boolean>();
+  @Output() fileSelected = new EventEmitter<FilePayload>();
+
 
   // --- STATE ---
   public staticContent$: Observable<ApiDrivenContent[]>;
@@ -94,7 +95,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     // Prioridad: Si hay JSON Local, siempre gana. Si no, usa API.
     
     const jsonChange = changes['UxDrivenJson'];
-    const apiChange = (changes['projectId'] || changes['branch']);
+    const apiChange = (changes['apiURL']);
 
     // CASO A: Nuevo JSON Local recibido
     if (jsonChange && this.UxDrivenJson) {
@@ -109,7 +110,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     }
     // CASO B: Cambio en Configuración API (y no estamos en modo local)
     else if (apiChange && !apiChange.isFirstChange() && !this.UxDrivenJson) {
-       if (this.projectId) this.loadDataFromApi();
+       if (this.apiURL) this.loadDataFromApi();
     }
 
 
@@ -133,10 +134,10 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     );
 
     if (modalTriggered) {
-       const source = this.modalJson || this.modalProjectId;
+       const source = this.modalJson || this.modalApiUrl;
        
        if (source) {
-          this.openModal(source, this.modalBranch, this.modalData);
+          this.openModal(source, this.modalData);
        } else {
           this.modalService.close(); 
        }
@@ -148,13 +149,13 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   }
 
   public refresh(): void {
-    if (this.projectId) this.loadData();
+    if (this.apiURL) this.loadData();
   }
 
   // --- LOGICA DE CARGA ---
   private loadData(): void {
     this.isLoading = true;
-    const sub = this.dws.loadInitialContent(this.projectId!, this.branch)
+    const sub = this.dws.loadInitialContent(this.apiURL!)
       .pipe(finalize(() => {
         this.isLoading = false;
         this.loaded.emit(true);
@@ -290,14 +291,14 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
           this.dws.setLocalContent(this.UxDrivenJson);
           this.handleDataPatching();
           this.loaded.emit(true);
-      } else if (this.projectId) {
+      } else if (this.apiURL) {
           this.loadDataFromApi();
       }
   }
 
   private loadDataFromApi(): void {
     this.isLoading = true;
-    const sub = this.dws.loadInitialContent(this.projectId!, this.branch)
+    const sub = this.dws.loadInitialContent(this.apiURL!)
       .pipe(finalize(() => {
         this.isLoading = false;
         this.loaded.emit(true);
@@ -318,4 +319,5 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
           setTimeout(() => this.setFormValues(this.data), 50);
       }
   }
+
 }

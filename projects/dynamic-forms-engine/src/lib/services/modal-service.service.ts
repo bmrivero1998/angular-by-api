@@ -53,7 +53,7 @@ export class ModalService {
     // 2. Lógica de decisión
     if (typeof contentSource === 'string') {
         // ES UN ID: Vamos a buscarlo a la API
-        this.dcs.getContent(contentSource, branch).subscribe((response: any) => {
+        this.dcs.getContent(contentSource).subscribe((response: any) => {
             let config: ApiDrivenContent[] = [];
             try {
                 // Parche para JSON stringificado
