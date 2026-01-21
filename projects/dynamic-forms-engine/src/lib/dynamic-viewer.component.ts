@@ -1132,7 +1132,6 @@ private cleanupDynamicElements(): void {
 
     const updateAll = () => {
       this.updateButtonStates();
-      this.applyConditionalLogic();
     };
 
     const sub = this.dynamicForm.valueChanges.subscribe(updateAll);
@@ -1270,36 +1269,6 @@ private cleanupDynamicElements(): void {
     );
   }
 
-  /**
-   * @description
-   * [PRO] Ejecuta la lógica condicional del formulario en tiempo real.
-   * * Esta función recorre los mapeos de campos buscando propiedades `showIf` o `hideIf`.
-   * Si se cumple una condición, realiza una sincronización atómica:
-   * 1. **Visual**: Oculta o muestra los elementos en el DOM usando `display: none`.
-   * 2. **Estado**: Habilita o deshabilita el `FormControl` de Angular para asegurar que 
-   * los campos ocultos no afecten la validez del formulario ni se envíen en el payload.
-   * * @private
-   * @memberof DynamicViewerComponent
-   */
-
-  private applyConditionalLogic(): void {
-  this.formMappings?.forEach(mapping => {
-    if (mapping.hideIf || mapping.showIf) {
-      const elements = this.htmlContainerRef.nativeElement.querySelectorAll(mapping.domSelector);
-      
-      let shouldHide = false;
-      if (mapping.hideIf) shouldHide = this.evaluateCondition(mapping.hideIf);
-      if (mapping.showIf) shouldHide = !this.evaluateCondition(mapping.showIf);
-
-      elements.forEach((el: any) => {
-        this.renderer.setStyle(el, 'display', shouldHide ? 'none' : '');
-        const control = this.dynamicForm.get(mapping.controlName);
-        if (shouldHide && control?.enabled) control.disable({ emitEvent: false });
-        if (!shouldHide && control?.disabled) control.enable({ emitEvent: false });
-      });
-    }
-  });
-}
 
    /**
    * @description
