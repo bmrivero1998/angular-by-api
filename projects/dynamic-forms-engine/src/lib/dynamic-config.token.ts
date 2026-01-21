@@ -10,6 +10,15 @@ export interface DynamicLibraryConfig {
   successClassName?: string; // Ej: 'is-valid' (Bootstrap) o 'border-green-500' (Tailwind)
   defaultErrorMessages?:DefaultErrorMessages
   disallowExternalCssResources?: boolean;
+
+  visibilityAnimation?: boolean;    // Habilitar animaciones
+  visibilityAnimationDuration?: number; // Duración en ms
+
+    // CONDICIONALES
+  conditionalDebounceTime?: number; // Tiempo de debounce para cambios (default: 50ms)
+  clearHiddenFields?: boolean;      // Limpiar valores de campos ocultos
+  emitVisibilityEvents?: boolean;   // Emitir eventos personalizados
+
 }
 
 export interface DefaultErrorMessages {

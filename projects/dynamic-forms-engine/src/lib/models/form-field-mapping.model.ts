@@ -31,6 +31,8 @@ export interface FormFieldMapping {
   autoCompleteConfig?: AutoCompleteConfig;
   fileUploadConfig?: FileUploadConfig;
   sliderConfig?: SliderConfig;
+  visibilityGroup?:string
+  alwaysDisabled?:boolean
 }
 
 export interface ButtonConfig {
