@@ -10,7 +10,7 @@ import {
   SimpleChanges
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AbstractControl, FormGroup } from '@angular/forms'; // <-- Agregado AbstractControl
+import { AbstractControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Observable, Subscription, finalize, take } from 'rxjs';
 
 // Imports de tu librería
@@ -23,54 +23,58 @@ import { FilePayload } from '../../../../projects/dynamic-forms-engine/src/lib/m
 @Component({
   selector: 'ux-driven-viewer-widget',
   standalone: true,
-  imports: [CommonModule, DynamicViewerComponent],
+  imports: [CommonModule, DynamicViewerComponent, ReactiveFormsModule],
   templateUrl: './ux-driven-viewer.component.html',
   encapsulation: ViewEncapsulation.None,
   styles: [`
     .ux-widget-container {
-      display: grid !important;
-      grid-template-columns: repeat(12, 1fr) !important;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
       gap: 16px;
       width: 100%;
+    }
+    @media (max-width: 768px) {
+      .ux-widget-container {
+        display: flex;
+        flex-direction: column;
+      }
     }
   `]
 })
 export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChanges {
   
-  @Input() apiURL!:string;
+  // --------------------------------------------------------
+  // Inputs de Configuración y Datos
+  // --------------------------------------------------------
+  @Input() apiUrl!: string; // Se mantiene igual por compatibilidad o gusto
+  @Input() localSchema?: any; // Reemplaza UxDrivenJson
+  @Input() externalForm?: FormGroup;
+  @Input() initialData?: any; // Reemplaza data
 
-  
-  // DATA: Objeto con valores para pre-llenar el formulario (ej: usuario a editar)
-  @Input() data?: any; 
+  // --------------------------------------------------------
+  // Inputs de Modal
+  // --------------------------------------------------------
+  @Input() modalEndpoint?: string; // Reemplaza modalApiUrl
+  @Input() modalContext?: any;     // Reemplaza modalData
+  @Input() modalSchema?: any;      // Reemplaza modalJson
 
-  // --- MODO LOCAL (Nuevo) ---
-  @Input() UxDrivenJson?: any;
+  // --------------------------------------------------------
+  // Outputs (Eventos)
+  // --------------------------------------------------------
+  @Output() formSubmit = new EventEmitter<any>();         // Reemplaza formSubmitted
+  @Output() actionTriggered = new EventEmitter<DynamicClickPayload>(); // Reemplaza actionClicked
+  @Output() modalResult = new EventEmitter<any>();        // Reemplaza modalEmitted
+  @Output() errorOccurred = new EventEmitter<string>();   // Reemplaza componentError
+  @Output() ready = new EventEmitter<boolean>();          // Reemplaza loaded
+  @Output() fileSelected = new EventEmitter<FilePayload>(); // Se mantiene igual
 
-  // MODAL: Configuración para abrir el viewer como modal
-  @Input() modalApiUrl?:string
-  @Input() modalData?: any;
-  @Input() modalJson?: any;
-
-
-  // FORMULARIO EXTERNO: Permite pasar un FormGroup ya creado desde el padre
-  @Input() externalForm?: FormGroup; 
-
-  // --- OUTPUTS ---
-  @Output() formSubmitted = new EventEmitter<any>();
-  @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
-  @Output() modalEmitted = new EventEmitter<any>();
-  @Output() componentError = new EventEmitter<string>();
-  @Output() loaded = new EventEmitter<boolean>();
-  @Output() fileSelected = new EventEmitter<FilePayload>();
-
-
-  // --- STATE ---
+  // --------------------------------------------------------
+  // Estado Interno
+  // --------------------------------------------------------
   public staticContent$: Observable<ApiDrivenContent[]>;
   public dynamicContent$: Observable<ApiDrivenContent[]>;
   public isLoading = false;
-
   public formGroup: FormGroup = new FormGroup({});
-  
   private subs = new Subscription();
 
   constructor(
@@ -85,59 +89,51 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     if (this.externalForm) {
       this.formGroup = this.externalForm;
     }
-
     this.initContentStrategy();
   }
 
- ngOnChanges(changes: SimpleChanges): void {
-
+  ngOnChanges(changes: SimpleChanges): void {
     // --- 1. ESTRATEGIA DE CONTENIDO (Local vs API) ---
-    // Prioridad: Si hay JSON Local, siempre gana. Si no, usa API.
-    
-    const jsonChange = changes['UxDrivenJson'];
-    const apiChange = (changes['apiURL']);
+    const jsonChange = changes['localSchema'];
+    const apiChange = changes['apiUrl'];
 
     // CASO A: Nuevo JSON Local recibido
-    if (jsonChange && this.UxDrivenJson) {
+    if (jsonChange && this.localSchema) {
        this.isLoading = true;
-       // Timeout(0) libera el hilo principal para que la UI no se congele al procesar el JSON
        setTimeout(() => {
-           this.dws.setLocalContent(this.UxDrivenJson);
-           this.handleDataPatching(); // Si ya había data, la reaplicamos
+           this.dws.setLocalContent(this.localSchema);
+           this.handleDataPatching(); 
            this.isLoading = false;
-           this.loaded.emit(true);
+           this.ready.emit(true);
        }, 0);
     }
-    // CASO B: Cambio en Configuración API (y no estamos en modo local)
-    else if (apiChange && !apiChange.isFirstChange() && !this.UxDrivenJson) {
-       if (this.apiURL) this.loadDataFromApi();
+    // CASO B: Cambio en Configuración API
+    else if (apiChange && !this.localSchema) {
+       if (this.apiUrl && this.apiUrl.trim().length > 0) {
+          this.loadDataFromApi();
+       }
     }
-
 
     // --- 2. SINCRONIZACIÓN DE FORMULARIO EXTERNO ---
     if (changes['externalForm'] && this.externalForm) {
        this.formGroup = this.externalForm;
     }
 
-
-    // --- 3. PARCHEO DE DATOS (Smart Patching) ---
-    if (changes['data'] && this.data) {
+    // --- 3. PARCHEO DE DATOS ---
+    if (changes['initialData'] && this.initialData) {
        this.handleDataPatching();
     }
 
-
-    // --- 4. GESTOR DE MODALES (Trigger por Inputs) ---
-    // Detectamos si cambió cualquier propiedad relacionada con modales
-    const modalKeys = ['modalJson', 'modalProjectId', 'modalBranch', 'modalData'];
+    // --- 4. GESTOR DE MODALES ---
+    const modalKeys = ['modalSchema', 'modalEndpoint', 'modalContext'];
     const modalTriggered = modalKeys.some(key => 
         changes[key] && !changes[key].isFirstChange()
     );
 
     if (modalTriggered) {
-       const source = this.modalJson || this.modalApiUrl;
-       
+       const source = this.modalSchema || this.modalEndpoint;
        if (source) {
-          this.openModal(source, this.modalData);
+          this.openModal(source, undefined, this.modalContext);
        } else {
           this.modalService.close(); 
        }
@@ -149,28 +145,32 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   }
 
   public refresh(): void {
-    if (this.apiURL) this.loadData();
+    if (this.apiUrl) this.loadData();
   }
 
   // --- LOGICA DE CARGA ---
   private loadData(): void {
     this.isLoading = true;
-    const sub = this.dws.loadInitialContent(this.apiURL!)
+    const sub = this.dws.loadInitialContent(this.apiUrl!)
       .pipe(finalize(() => {
         this.isLoading = false;
-        this.loaded.emit(true);
+        this.ready.emit(true);
         // Si teníamos data pendiente esperando a que cargara el form, la aplicamos ahora
-        if (this.data) {
-            setTimeout(() => this.setFormValues(this.data), 100);
+        if (this.initialData) {
+            setTimeout(() => this.setFormValues(this.initialData), 100);
         }
       }))
       .subscribe({
         error: (err) => {
           console.error('[UXWidget] Error:', err);
-          this.componentError.emit('Error cargando configuración dinámica');
+          this.errorOccurred.emit('Error cargando configuración dinámica');
         }
       });
     this.subs.add(sub);
+  }
+
+  private loadDataFromApi(): void {
+    this.loadData();
   }
 
   // --- LOGICA DE EVENTOS ---
@@ -178,9 +178,9 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     const action = payload.action;
 
     if (action.includes('modal') || action === 'close') {
-    this.modalService.close(); 
-    return; // Importante: cortamos aquí, no emitimos al padre
-  }
+      this.modalService.close(); 
+      return; 
+    }
 
     if (action.includes('reset')) {
       this.formGroup.reset();
@@ -188,10 +188,10 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
 
     if (action.includes('submit')) {
       if (this.formGroup.valid) {
-        this.formSubmitted.emit(this.formGroup.value);
+        this.formSubmit.emit(this.formGroup.value);
       } else {
         this.formGroup.markAllAsTouched();
-        this.componentError.emit('El formulario contiene errores.');
+        this.errorOccurred.emit('El formulario contiene errores.');
       }
       return; 
     }
@@ -204,13 +204,13 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       }
     };
     
-    this.actionClicked.emit(enrichedPayload);
+    this.actionTriggered.emit(enrichedPayload);
   }
 
   // --- LOGICA DEL MODAL ---
- private openModal(source: string | any[], branch?: string, data?: any): void {
+  private openModal(source: string | any[], branch?: string, data?: any): void {
     this.modalService
-      .open(source, branch, data) // El servicio ya sabe qué hacer si es string o array
+      .open(source, branch, data)
       .pipe(take(1))
       .subscribe((result) => {
         if (result) {
@@ -219,22 +219,13 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       });
   }
 
-  
-
   private handleModalResult(result: any): void {
-    // Ajuste: A veces el modal devuelve el objeto directo o dentro de una propiedad
     const formData = result.genericForm || result;
-    this.modalEmitted.emit(formData);
+    this.modalResult.emit(formData);
   }
 
-  // =========================================================
-  // === NUEVA LÓGICA: PARCHEO INTELIGENTE DE VALORES ===
-  // =========================================================
+  // --- PARCHEO INTELIGENTE DE VALORES ---
 
-  /**
-   * Recorre el objeto de datos recibido e intenta encontrar un control
-   * coincidente en cualquier nivel de profundidad del Formulario.
-   */
   public setFormValues(data: any): void {
     if (!data || !this.formGroup) return;
 
@@ -246,7 +237,6 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
          this.formGroup.get(key)?.patchValue(value);
       } else {
          // 2. Búsqueda Profunda (Deep Search)
-         // Busca en sub-formularios generados dinámicamente
          const control = this.findControlDeep(this.formGroup, key);
          if (control) {
              control.patchValue(value);
@@ -254,70 +244,41 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       }
     });
   }
-
-
-  public onFormSubmitted(event: { formId: string, data: any}): void {
-      this.formSubmitted.emit(event.data);
+  
+  private handleDataPatching(): void {
+      if (this.initialData) {
+          setTimeout(() => this.setFormValues(this.initialData), 50);
+      }
   }
 
-  /**
-   * Función recursiva que busca un control por su nombre
-   * dentro de una jerarquía de FormGroups.
-   */
-  private findControlDeep(form: FormGroup, controlName: string): AbstractControl | null {
-      // Recorremos todos los controles directos de este FormGroup
+  public onFormSubmitted(event: { formId: string, data: any}): void {
+      this.formSubmit.emit(event.data);
+  }
+
+  private findControlDeep(form: FormGroup, controlName: string, depth = 0): AbstractControl | null {
+      if (depth > 10) return null; // Prevención de bucles infinitos
       for (const key of Object.keys(form.controls)) {
           const control = form.controls[key];
 
-          // Si encontramos el nombre exacto (aunque esté anidado), éxito
           if (key === controlName) {
               return control;
           }
 
-          // Si el hijo es otro FormGroup, bajamos un nivel (Recursión)
           if (control instanceof FormGroup) {
-              const found = this.findControlDeep(control, controlName);
+              const found = this.findControlDeep(control, controlName, depth + 1);
               if (found) return found;
           }
       }
       return null;
   }
 
-  /**
-   * Decide qué estrategia de carga usar
-   */
   private initContentStrategy(): void {
-      if (this.UxDrivenJson) {
-          this.dws.setLocalContent(this.UxDrivenJson);
+      if (this.localSchema) {
+          this.dws.setLocalContent(this.localSchema);
           this.handleDataPatching();
-          this.loaded.emit(true);
-      } else if (this.apiURL) {
+          this.ready.emit(true);
+      } else if (this.apiUrl && this.apiUrl.trim().length > 0) {
           this.loadDataFromApi();
       }
   }
-
-  private loadDataFromApi(): void {
-    this.isLoading = true;
-    const sub = this.dws.loadInitialContent(this.apiURL!)
-      .pipe(finalize(() => {
-        this.isLoading = false;
-        this.loaded.emit(true);
-        this.handleDataPatching();
-      }))
-      .subscribe({
-        error: (err) => {
-          console.error('[UXWidget] Error API:', err);
-          this.componentError.emit('Error cargando configuración dinámica');
-        }
-      });
-    this.subs.add(sub);
-  }
-
-  private handleDataPatching(): void {
-      if (this.data) {
-          // Delay técnico para asegurar que el DOM/FormGroup ya existan
-          setTimeout(() => this.setFormValues(this.data), 50);
-      }
-  }
-
 }

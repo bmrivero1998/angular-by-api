@@ -83,6 +83,11 @@ export class DynamicViewerComponent <T = any>
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
   @Output() componentError = new EventEmitter<string>();
   @Output() fileSelected = new EventEmitter<FilePayload>()
+  @Output() controlValueChange = new EventEmitter<{
+  controlName: string;
+  value: any;
+  formId: string;
+}>();
 
   safeHtmlContent!: SafeHtml;
   dynamicForm!: FormGroup;
@@ -95,6 +100,8 @@ export class DynamicViewerComponent <T = any>
   private subscriptions = new Subscription();
   private domListeners: Array<() => void> = [];
   private config = inject(DYNAMIC_CONFIG, { optional: true });
+  private timeoutIds = new Set<number>();
+  private intervalIds = new Set<number>();
 
   @ViewChild('htmlContainer') htmlContainerRef!: ElementRef<HTMLDivElement>;
 
@@ -104,7 +111,7 @@ export class DynamicViewerComponent <T = any>
     private formBuilder: FormBuilder,
     private synchronizer: FormDomSynchronizerService,
     private renderer: Renderer2,
-    private validationService: DynamicValidationService
+    private validationService: DynamicValidationService,
   ) {}
 
   ngOnInit(): void {
@@ -136,13 +143,13 @@ export class DynamicViewerComponent <T = any>
         }
         if (changes['buttonConfigs']) {
           // Schedule update after DOM is stable
-          setTimeout(() => this.updateButtonStates(), 0);
+           this.safeTimeout(() => this.updateButtonStates(), 0);
         }
         if (changes['cssContentString'] || changes['contentId']) {
           this.injectCss();
         }
         if (changes['dataBindings']) {
-          setTimeout(() => this.processIdDomBindings(), 0);
+           this.safeTimeout(() => this.processIdDomBindings(), 0);
         }
       }
     }
@@ -151,12 +158,6 @@ export class DynamicViewerComponent <T = any>
   ngAfterViewInit(): void {
     this.viewInitialized = true;
     this.injectCss();
-
-    const script = document.createElement('script');
-    script.src = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js";
-    script.async = true;
-    this.htmlContainerRef.nativeElement.appendChild(script);
-
     this.initializeInjectedContentInteractions();
   }
 
@@ -248,6 +249,148 @@ export class DynamicViewerComponent <T = any>
     return this.dynamicForm.value as T;
   }
 
+  // --- NUEVOS MÉTODOS PÚBLICOS ---
+
+/**
+ * Actualiza el valor de un control específico
+ */
+public setFormValue(controlName: string, value: any): void {
+  const control = this.dynamicForm.get(controlName);
+  if (control) {
+    control.setValue(value);
+  }
+}
+
+/**
+ * Resetea el formulario a valores iniciales
+ */
+public resetForm(values?: any): void {
+  if (values) {
+    this.dynamicForm.reset(values);
+  } else {
+    this.dynamicForm.reset();
+    // Restaurar valores por defecto de los mappings
+    this.formMappings?.forEach(mapping => {
+      if (mapping.defaultValue !== undefined) {
+        this.dynamicForm.get(mapping.controlName)?.setValue(mapping.defaultValue);
+      }
+    });
+  }
+}
+
+/**
+ * Obtiene el estado de validación de un control específico
+ */
+public getControlStatus(controlName: string): {
+  valid: boolean;
+  invalid: boolean;
+  touched: boolean;
+  dirty: boolean;
+  errors: any;
+} {
+  const control = this.dynamicForm.get(controlName);
+  if (!control) {
+    return { valid: false, invalid: true, touched: false, dirty: false, errors: null };
+  }
+  
+  return {
+    valid: control.valid,
+    invalid: control.invalid,
+    touched: control.touched,
+    dirty: control.dirty,
+    errors: control.errors
+  };
+}
+
+/**
+ * Valida un control específico
+ */
+public validateControl(controlName: string): void {
+  const control = this.dynamicForm.get(controlName);
+  if (control) {
+    control.markAsTouched();
+    control.updateValueAndValidity();
+  }
+}
+
+// --- MÉTODOS PARA CONTROLES ESPECIALES ---
+
+/**
+ * Actualiza las opciones de un select dinámicamente
+ */
+public updateSelectOptions(controlName: string, options: Array<{value: any, label: string}>): void {
+  const mapping = this.formMappings?.find(m => m.controlName === controlName);
+  if (!mapping) return;
+  
+  const select = this.htmlContainerRef.nativeElement.querySelector(
+    mapping.domSelector
+  ) as HTMLSelectElement;
+  
+  if (select) {
+    // Guardar valor actual
+    const currentValue = select.value;
+    
+    // Limpiar opciones
+    while (select.options.length > 0) {
+      select.remove(0);
+    }
+    
+    // Agregar nuevas opciones
+    options.forEach(option => {
+      const opt = document.createElement('option');
+      opt.value = option.value;
+      opt.text = option.label;
+      select.add(opt);
+    });
+    
+    // Restaurar valor si existe en nuevas opciones
+    const exists = options.some(opt => opt.value === currentValue);
+    if (exists) {
+      select.value = currentValue;
+    }
+    
+    // Actualizar control
+    this.dynamicForm.get(controlName)?.setValue(select.value);
+  }
+}
+
+/**
+ * Actualiza sugerencias de autocomplete
+ */
+public updateAutocompleteSuggestions(controlName: string, suggestions: string[]): void {
+  const mapping = this.formMappings?.find(m => m.controlName === controlName);
+  if (!mapping?.autoCompleteConfig) return;
+  
+  const input = this.htmlContainerRef.nativeElement.querySelector(
+    mapping.domSelector
+  ) as HTMLInputElement;
+  
+  if (input) {
+    // Actualizar datalist
+    this.updateDatalist(input, suggestions, controlName);
+  }
+}
+
+private updateDatalist(input: HTMLInputElement, suggestions: string[], controlName: string): void {
+  const datalistId = `datalist-${controlName}`;
+  let datalist = this.htmlContainerRef.nativeElement.querySelector(`#${datalistId}`) as HTMLDataListElement;
+  
+  if (!datalist) {
+    datalist = document.createElement('datalist');
+    datalist.id = datalistId;
+    this.htmlContainerRef.nativeElement.appendChild(datalist);
+    input.setAttribute('list', datalistId);
+  }
+  
+  // Limpiar y actualizar
+  datalist.innerHTML = '';
+  suggestions.forEach(suggestion => {
+    const option = document.createElement('option');
+    option.value = suggestion;
+    datalist.appendChild(option);
+  });
+}
+
   // --- LÓGICA DE CONSTRUCCIÓN Y SINCRONIZACIÓN ---
 
   /**
@@ -266,7 +409,7 @@ export class DynamicViewerComponent <T = any>
     this.buildAndInitializeForm();
 
     // Interactions need to be re-initialized after the view updates
-    setTimeout(() => this.initializeInjectedContentInteractions(), 0);
+     this.safeTimeout(() => this.initializeInjectedContentInteractions(), 0);
   }
 
   /**
@@ -377,9 +520,10 @@ export class DynamicViewerComponent <T = any>
     this.cleanupDomInteractions();
 
     const setupLogic = () => {
-      if (!this.htmlContainerRef?.nativeElement?.childElementCount)
+      if (!this.htmlContainerRef?.nativeElement?.childElementCount){
         return false;
-
+      }
+      this.checkAndLoadExternalDependencies();
       if (this.isForm && this.formMappings) {
         this.synchronizer.connect(
           this.formId,
@@ -387,7 +531,6 @@ export class DynamicViewerComponent <T = any>
           this.htmlContainerRef.nativeElement,
           this.formMappings
         );
-        this.injectNativeValidators();
         this.setupInjectedFormSubmitPrevention();
         this.subscribeAndSetErrorVisualsOnInputs();
         this.setupInjectedKeyFiltering();
@@ -429,17 +572,64 @@ export class DynamicViewerComponent <T = any>
    *
    * Limpia también los listeners establecidos en los elementos del DOM.
    */
-  private cleanupDomInteractions(): void {
-    this.activeMutationObserver?.disconnect();
-    this.activeMutationObserver = null;
+private cleanupDomInteractions(): void {
+  // 1. Desconectar MutationObserver
+  this.activeMutationObserver?.disconnect();
+  this.activeMutationObserver = null;
 
-    if (this.isForm) {
-      this.synchronizer.disconnect(this.formId);
-    }
-
-    this.domListeners.forEach((unlisten) => unlisten());
-    this.domListeners = [];
+  // 2. Desconectar sincronizador de formularios
+  if (this.isForm) {
+    this.synchronizer.disconnect(this.formId);
   }
+
+  // 3. Remover listeners de DOM
+  this.domListeners.forEach((unlisten) => unlisten());
+  this.domListeners = [];
+
+  // 4. Cancelar timeouts/intervals
+  this.clearTimers();
+
+  // 5. Limpiar instancias externas
+  this.cleanupExternalInstances();
+
+  // 6. Limpiar elementos creados dinámicamente
+  this.cleanupDynamicElements();
+}
+
+/**
+ * Cancela todos los timers creados por el componente
+ */
+private clearTimers(): void {
+  // Aquí puedes almacenar y limpiar timeouts/intervals
+  if (this.timeoutIds) {
+    this.timeoutIds.forEach(id => clearTimeout(id));
+    this.timeoutIds.clear();
+  }
+  
+  if (this.intervalIds) {
+    this.intervalIds.forEach(id => clearInterval(id));
+    this.intervalIds.clear();
+  }
+}
+
+/**
+ * Limpia elementos creados dinámicamente
+ */
+private cleanupDynamicElements(): void {
+  // Remover estilos dinámicos
+  const dynamicStyles = this.htmlContainerRef.nativeElement.querySelectorAll('style[data-dynamic-style]');
+  dynamicStyles.forEach(style => style.remove());
+
+  // Remover scripts dinámicos
+  const dynamicScripts = this.htmlContainerRef.nativeElement.querySelectorAll('script[data-dynamic-script]');
+  dynamicScripts.forEach(script => script.remove());
+
+  // Remover elementos con atributos de datos dinámicos
+  const dynamicElements = this.htmlContainerRef.nativeElement.querySelectorAll('[data-dynamic-element]');
+  dynamicElements.forEach(element => element.remove());
+}
+
+
 
   // --- GESTIÓN DE EVENTOS DEL DOM ---
 
@@ -707,9 +897,9 @@ export class DynamicViewerComponent <T = any>
       if (dataCharsCounted === dataCharsBeforeCursor) break;
     }
 
-    requestAnimationFrame(() => {
-      target.setSelectionRange(newCursorPosition, newCursorPosition);
-    });
+     this.safeTimeout(() => {
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+      }, 0);
   }
 
   // --- ACTUALIZACIÓN DE ESTADO Y UI ---
@@ -952,7 +1142,7 @@ export class DynamicViewerComponent <T = any>
     this.subscriptions.add(statusSub);
 
 
-    setTimeout(() => updateAll(), 0);
+     this.safeTimeout(() => updateAll(), 0);
   }
 
   // --- MÉTODOS AUXILIARES ---
@@ -1227,107 +1417,537 @@ private syncDomAttributes(): void {
 }
 
 /**
- * Manejo especial para Inputs de Archivo (The Final Boss).
- * 1. No guarda el File en el Form (guarda true/null para validación).
- * 2. Valida peso y extensión manualmente.
- * 3. Emite el archivo al padre vía (fileSelected).
- */
-private setupFileInputs(): void {
-  // Buscamos inputs file basados en los mapeos
-  const fileMappings = this.formMappings?.filter(m => {
-    const el = this.htmlContainerRef.nativeElement.querySelector(m.domSelector);
-    return el && el.getAttribute('type') === 'file';
-  });
+   * Configura listeners y atributos para inputs de tipo archivo.
+   * Vincula el evento 'change' con el FormGroup y el Output fileSelected.
+   */
 
-  if (!fileMappings) return;
+  private setupFileInputs(): void {
+    if (!this.formMappings || !this.htmlContainerRef) return;
 
-  fileMappings.forEach(mapping => {
-    const element = this.htmlContainerRef.nativeElement.querySelector(mapping.domSelector) as HTMLInputElement;
-    const errorElement = mapping.errorDisplaySelector 
-    ? this.htmlContainerRef.nativeElement.querySelector(mapping.errorDisplaySelector) as HTMLElement
-    : null;
-
-    if (!element) return;
-
-    // Listener para cuando el usuario selecciona archivo
-    this.setupListener(element, 'change', (event: any) => {
-      const input = event.target as HTMLInputElement;
-      const file = input.files ? input.files[0] : null;
-      const control = this.dynamicForm.get(mapping.controlName);
-
-      // Limpiar errores previos visuales
-      if (errorElement) errorElement.textContent = '';
-      this.renderer.removeClass(input, 'is-invalid');
-      this.renderer.removeClass(input, 'is-valid');
-
-      // 1. Si no hay archivo (y es requerido)
-      if (!file) {
-        if (this.hasValidator(mapping, 'required')) {
-           control?.setValue(null); // Invalidamos el form
-           control?.setErrors({ required: true });
-           this.renderer.addClass(input, 'is-invalid');
-        } else {
-           control?.setValue(null); // Si no es requerido, no pasa nada
-        }
-        return;
-      }
-
-      // 2. Validaciones de "Boss Final" (Tamaño y Tipo)
-      if (mapping.validatorConfig) {
-        // Validar Tamaño (Max Size en Bytes)
-        const maxSize = mapping.validatorConfig.find(v => v.type.toLowerCase() === 'maxsize');
-        if (maxSize && file.size > maxSize.value) {
-          this.showFileError(input, errorElement, maxSize.message || `Máximo ${maxSize.value} bytes`);
-          input.value = ''; // Reset físico del input
-          control?.setValue(null); // Invalidamos form
-          return;
-        }
-
-        // Validar Extensiones (FileType)
-        const fileType = mapping.validatorConfig.find(v => v.type.toLowerCase() === 'filetype');
-        if (fileType && !this.checkFileType(file, fileType.value)) {
-          this.showFileError(input, errorElement, fileType.message || `Formato no permitido`);
-          input.value = ''; 
-          control?.setValue(null);
-          return;
-        }
-      }
-
-      // 3. ¡ÉXITO! 
-      // A) Marcamos el form como válido (Shadow Value)
-      control?.setValue(true); 
-      control?.setErrors(null);
-      this.renderer.addClass(input, 'is-valid');
-
-      // B) Emitimos el archivo real al padre
-      this.fileSelected.emit({
-        controlName: mapping.controlName,
-        file: file,
-        formId: this.formId
-      });
+    // Filtramos mappings relevantes
+    const fileMappings = this.formMappings.filter((m) => {
+      const el = this.htmlContainerRef.nativeElement.querySelector(m.domSelector);
+      return el && (el.getAttribute('type') === 'file' || m.fileUploadConfig);
     });
+
+    fileMappings.forEach((mapping) => {
+      const element = this.htmlContainerRef.nativeElement.querySelector(
+        mapping.domSelector
+      ) as HTMLInputElement;
+
+      if (!element) return;
+
+      // Configurar atributos visuales (El servicio ya hace parte de esto, pero esto asegura atributos específicos de file)
+      if (mapping.fileUploadConfig) {
+        if (mapping.fileUploadConfig.accept) {
+          this.renderer.setAttribute(element, 'accept', mapping.fileUploadConfig.accept);
+        }
+        if (mapping.fileUploadConfig.multiple) {
+          this.renderer.setAttribute(element, 'multiple', 'true');
+        }
+      }
+
+      // --- CORRECCIÓN CLAVE: Guardamos la referencia para limpiar el listener después ---
+      const unlisten = this.renderer.listen(element, 'change', (event: any) => {
+        const files = event.target.files;
+        
+        if (files && files.length > 0) {
+          // Convertir FileList a Array para facilitar validación
+          const fileArray = Array.from(files) as File[];
+          const fileToEmit = mapping.fileUploadConfig?.multiple ? fileArray : fileArray[0];
+
+          // 1. Usar tu validador helper (estaba sin usar)
+          const validationErrors = this.validateFiles(fileArray, mapping, mapping.fileUploadConfig);
+          
+          if (validationErrors.length > 0) {
+             // Si hay error, marcamos el control y limpiamos el input
+             this.setControlError(mapping.controlName, { fileValidation: validationErrors });
+             element.value = ''; // Limpiar el input físico
+             return;
+          }
+
+          // 2. Actualizar FormControl (El servicio también lo hace, pero esto asegura consistencia inmediata para el evento)
+          this.dynamicForm.get(mapping.controlName)?.setValue(fileToEmit);
+          this.dynamicForm.get(mapping.controlName)?.markAsDirty();
+          this.dynamicForm.get(mapping.controlName)?.markAsTouched();
+
+          // 3. Emitir evento
+          const payload: FilePayload = {
+            controlName: mapping.controlName,
+            file: fileToEmit, // Puede ser File o File[]
+            formId: this.formId || this.contentId,
+            isMultiple: mapping.fileUploadConfig?.multiple || false
+          };
+          
+          this.fileSelected.emit(payload);
+        } else {
+          // Reset si el usuario cancela
+          this.dynamicForm.get(mapping.controlName)?.setValue(null);
+        }
+      });
+
+      // ¡IMPORTANTE! Agregamos el listener a la lista de limpieza
+      this.domListeners.push(unlisten);
+    });
+  }
+
+/**
+ * Valida archivos según configuración
+ */
+private validateFiles(files: File[], mapping: FormFieldMapping, fileConfig?: any): string[] {
+  const errors: string[] = [];
+  const config = fileConfig || {};
+  
+  files.forEach(file => {
+    // Validar tamaño máximo
+    if (config.maxSize && file.size > config.maxSize) {
+      errors.push(`El archivo ${file.name} excede el tamaño máximo de ${this.formatBytes(config.maxSize)}`);
+    }
+    
+    // Validar tipos aceptados
+    if (config.accept && !this.checkFileType(file, config.accept)) {
+      errors.push(`El archivo ${file.name} no es de un tipo aceptado: ${config.accept}`);
+    }
   });
+  
+  // Validar cantidad máxima
+  if (config.maxCount && files.length > config.maxCount) {
+    errors.push(`Máximo ${config.maxCount} archivos permitidos`);
+  }
+  
+  return errors;
 }
 
-// Helpers privados para el Boss Final
-private showFileError(input: HTMLElement, errorDisplay: HTMLElement | null, msg: string): void {
-  this.renderer.addClass(input, 'is-invalid');
-  if (errorDisplay) errorDisplay.textContent = msg;
+private formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-private hasValidator(mapping: any, type: string): boolean {
-  return mapping.validatorConfig?.some((v: any) => v.type === type);
-}
 
 private checkFileType(file: File, accept: string): boolean {
   const types = accept.split(',').map(t => t.trim().toLowerCase());
   return types.some(type => {
     if (type.startsWith('.')) return file.name.toLowerCase().endsWith(type);
-    // Soporte básico para mime types como image/*
     if (type.endsWith('/*')) return file.type.startsWith(type.replace('/*', ''));
     return file.type === type;
   });
 }
+
+
+/**
+ * Limpia todas las instancias externas y recursos asociados
+ * como editores de texto, datepickers, sliders, etc.
+ */
+private cleanupExternalInstances(): void {
+  if (!this.htmlContainerRef?.nativeElement) return;
+
+  // 1. Limpiar instancias de Quill.js
+  this.cleanupQuillInstances();
+
+  // 2. Limpiar instancias de Flatpickr
+  this.cleanupFlatpickrInstances();
+
+  // 3. Limpiar instancias de Bootstrap Datepicker
+  this.cleanupBootstrapDatepickers();
+
+  // 4. Limpiar instancias de TinyMCE
+  this.cleanupTinyMCEInstances();
+
+  // 5. Limpiar instancias de CKEditor
+  this.cleanupCKEditorInstances();
+
+  // 6. Limpiar sliders/complex controls
+  this.cleanupSliderInstances();
+
+  // 7. Limpiar tooltips/popovers de Bootstrap
+  this.cleanupBootstrapComponents();
+
+  // 8. Limpiar reCAPTCHA
+  this.cleanupRecaptchaInstances();
+
+  // 9. Limpiar cualquier otro widget/plugin
+  this.cleanupGenericWidgets();
+}
+
+/**
+ * Limpia instancias de Quill.js
+ */
+private cleanupQuillInstances(): void {
+  // Método 1: Buscar por clase CSS
+  const quillEditors = this.htmlContainerRef.nativeElement.querySelectorAll('.ql-editor');
+  quillEditors.forEach(editor => {
+    const quillInstance = (editor as any).__quill;
+    if (quillInstance && typeof quillInstance.destroy === 'function') {
+      try {
+        quillInstance.destroy();
+        (editor as any).__quill = null;
+      } catch (error) {
+        console.warn('Error destruyendo instancia Quill:', error);
+      }
+    }
+  });
+
+  // Método 2: Buscar por atributo data-quill
+  const quillContainers = this.htmlContainerRef.nativeElement.querySelectorAll('[data-quill-instance]');
+  quillContainers.forEach(container => {
+    const instanceId = container.getAttribute('data-quill-instance');
+    if (instanceId && (window as any)[instanceId]) {
+      try {
+        (window as any)[instanceId].destroy();
+        (window as any)[instanceId] = null;
+        container.removeAttribute('data-quill-instance');
+      } catch (error) {
+        console.warn(`Error destruyendo Quill instance ${instanceId}:`, error);
+      }
+    }
+  });
+}
+
+/**
+ * Limpia instancias de Flatpickr
+ */
+private cleanupFlatpickrInstances(): void {
+  const flatpickrInputs = this.htmlContainerRef.nativeElement.querySelectorAll('.flatpickr-input, [data-fp-instance]');
+  
+  flatpickrInputs.forEach(input => {
+    // Método 1: Flatpickr almacena referencia en _flatpickr
+    const fpInstance = (input as any)._flatpickr;
+    if (fpInstance && typeof fpInstance.destroy === 'function') {
+      try {
+        fpInstance.destroy();
+        (input as any)._flatpickr = null;
+      } catch (error) {
+        console.warn('Error destruyendo Flatpickr:', error);
+      }
+    }
+    
+    // Método 2: Buscar por atributo data
+    const instanceId = input.getAttribute('data-fp-instance');
+    if (instanceId && (window as any)[instanceId]) {
+      try {
+        (window as any)[instanceId].destroy();
+        (window as any)[instanceId] = null;
+        input.removeAttribute('data-fp-instance');
+      } catch (error) {
+        console.warn(`Error destruyendo Flatpickr instance ${instanceId}:`, error);
+      }
+    }
+  });
+}
+
+/**
+ * Limpia instancias de Bootstrap Datepicker
+ */
+private cleanupBootstrapDatepickers(): void {
+  const datepickerInputs = this.htmlContainerRef.nativeElement.querySelectorAll('.datepicker, [data-datepicker]');
+  
+  if ((window as any).jQuery?.fn?.datepicker) {
+    datepickerInputs.forEach(input => {
+      try {
+        const $input = (window as any).jQuery(input);
+        if ($input.data('datepicker')) {
+          $input.datepicker('destroy');
+          $input.removeData('datepicker');
+        }
+      } catch (error) {
+        console.warn('Error destruyendo Bootstrap Datepicker:', error);
+      }
+    });
+  }
+}
+
+/**
+ * Limpia instancias de TinyMCE
+ */
+private cleanupTinyMCEInstances(): void {
+  if ((window as any).tinymce) {
+    const tinyMCEIds: string[] = [];
+    
+    // Buscar textareas con clase de TinyMCE
+    const tinyEditors = this.htmlContainerRef.nativeElement.querySelectorAll('.mce-tinymce, [data-tinymce-id]');
+    
+    tinyEditors.forEach(editor => {
+      const editorId = editor.id || editor.getAttribute('data-tinymce-id');
+      if (editorId) {
+        tinyMCEIds.push(editorId);
+      }
+    });
+    
+    // Destruir cada instancia
+    tinyMCEIds.forEach(editorId => {
+      try {
+        const instance = (window as any).tinymce.get(editorId);
+        if (instance && typeof instance.remove === 'function') {
+          instance.remove();
+        }
+      } catch (error) {
+        console.warn(`Error destruyendo TinyMCE instance ${editorId}:`, error);
+      }
+    });
+  }
+}
+
+/**
+ * Limpia instancias de CKEditor
+ */
+private cleanupCKEditorInstances(): void {
+  if ((window as any).CKEDITOR) {
+    const ckEditorInstances = Object.keys((window as any).CKEDITOR.instances);
+    
+    ckEditorInstances.forEach(instanceName => {
+      const instance = (window as any).CKEDITOR.instances[instanceName];
+      const container = instance?.container?.$;
+      
+      // Verificar si el editor está dentro de nuestro contenedor
+      if (container && this.htmlContainerRef.nativeElement.contains(container)) {
+        try {
+          instance.destroy();
+        } catch (error) {
+          console.warn(`Error destruyendo CKEditor instance ${instanceName}:`, error);
+        }
+      }
+    });
+  }
+}
+
+/**
+ * Limpia instancias de sliders y controles complejos
+ */
+private cleanupSliderInstances(): void {
+  // Sliders con noUiSlider
+  const noUiSliders = this.htmlContainerRef.nativeElement.querySelectorAll('[data-nouislider]');
+  noUiSliders.forEach(slider => {
+    const instance = (slider as any).noUiSlider;
+    if (instance && typeof instance.destroy === 'function') {
+      try {
+        instance.destroy();
+        (slider as any).noUiSlider = null;
+      } catch (error) {
+        console.warn('Error destruyendo noUiSlider:', error);
+      }
+    }
+  });
+
+  // Sliders con jQuery UI
+  if ((window as any).jQuery?.fn?.slider) {
+    const jquerySliders = this.htmlContainerRef.nativeElement.querySelectorAll('.ui-slider');
+    jquerySliders.forEach(slider => {
+      try {
+        const $slider = (window as any).jQuery(slider);
+        if ($slider.hasClass('ui-slider')) {
+          $slider.slider('destroy');
+        }
+      } catch (error) {
+        console.warn('Error destruyendo jQuery UI Slider:', error);
+      }
+    });
+  }
+}
+
+/**
+ * Limpia componentes de Bootstrap
+ */
+private cleanupBootstrapComponents(): void {
+    // Verificamos si jQuery está disponible antes de intentar usarlo
+    const $ = (window as any).jQuery;
+    if (!$) return; // Si no hay jQuery, no hacemos nada y evitamos el crash
+
+    // Tooltips
+    const tooltips = this.htmlContainerRef.nativeElement.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltips.forEach((element) => {
+      try {
+        const $el = $(element);
+        // Verificamos si tiene el plugin data antes de llamar a dispose
+        if ($el.data && $el.data('bs.tooltip')) {
+          $el.tooltip('dispose');
+        }
+      } catch (error) {
+        console.warn('Error limpiando Bootstrap Tooltip:', error);
+      }
+    });
+
+    // Popovers
+    const popovers = this.htmlContainerRef.nativeElement.querySelectorAll('[data-bs-toggle="popover"]');
+    popovers.forEach((element) => {
+      try {
+        const $el = $(element);
+        if ($el.data && $el.data('bs.popover')) {
+          $el.popover('dispose');
+        }
+      } catch (error) {
+        console.warn('Error limpiando Bootstrap Popover:', error);
+      }
+    });
+
+    // Modals (Solo cerrar si están abiertos, no destruir el DOM globalmente)
+    const modals = this.htmlContainerRef.nativeElement.querySelectorAll('.modal');
+    modals.forEach((element) => {
+      try {
+        const $el = $(element);
+        if ($el.modal) {
+          $el.modal('hide');
+        }
+      } catch (error) {
+        // Ignorar errores de modal si no estaba inicializado
+      }
+    });
+  }
+
+/**
+ * Limpia instancias de reCAPTCHA
+ */
+private cleanupRecaptchaInstances(): void {
+  const recaptchaContainers = this.htmlContainerRef.nativeElement.querySelectorAll('.g-recaptcha, [data-recaptcha-id]');
+  
+  recaptchaContainers.forEach(container => {
+    const widgetId = container.getAttribute('data-recaptcha-id');
+    if (widgetId && (window as any).grecaptcha) {
+      try {
+        (window as any).grecaptcha.reset(widgetId);
+      } catch (error) {
+        console.warn('Error reseteando reCAPTCHA:', error);
+      }
+    }
+  });
+}
+
+/**
+ * Limpia widgets genéricos
+ */
+private cleanupGenericWidgets(): void {
+  // Limpiar cualquier intervalo o timeout creado por widgets
+  const widgetElements = this.htmlContainerRef.nativeElement.querySelectorAll('[data-widget-id]');
+  
+  widgetElements.forEach(element => {
+    const widgetId = element.getAttribute('data-widget-id');
+    if (widgetId && (window as any)[`widget_${widgetId}`]) {
+      const widget = (window as any)[`widget_${widgetId}`];
+      
+      // Intentar llamar a destroy si existe
+      if (widget && typeof widget.destroy === 'function') {
+        try {
+          widget.destroy();
+        } catch (error) {
+          console.warn(`Error destruyendo widget ${widgetId}:`, error);
+        }
+      }
+      
+      // Limpiar referencia
+      (window as any)[`widget_${widgetId}`] = null;
+      element.removeAttribute('data-widget-id');
+    }
+    
+    // Limpiar event listeners almacenados en data attributes
+    const listenerKeys = ['click', 'change', 'input', 'blur', 'focus'];
+    listenerKeys.forEach(key => {
+      const listenerId = element.getAttribute(`data-listener-${key}`);
+      if (listenerId && (window as any)[listenerId]) {
+        try {
+          element.removeEventListener(key, (window as any)[listenerId]);
+          (window as any)[listenerId] = null;
+        } catch (error) {
+          console.warn(`Error removiendo listener ${listenerId}:`, error);
+        }
+      }
+    });
+  });
+}
+
+/**
+ * setTimeout que se autolimpia y maneja errores
+ */
+protected safeTimeout(callback: () => void, delay: number): number {
+  const id = window.setTimeout(() => {
+    try {
+      callback();
+    } catch (error) {
+      console.error('Error en safeTimeout:', error);
+      this.emitError(`Error en timer: ${error}`);
+    } finally {
+      this.timeoutIds.delete(id);
+    }
+  }, delay);
+  
+  this.timeoutIds.add(id);
+  return id;
+}
+
+/**
+ * setInterval con registro para limpieza
+ */
+protected safeInterval(callback: () => void, delay: number): number {
+  const id = window.setInterval(() => {
+    try {
+      callback();
+    } catch (error) {
+      console.error('Error en safeInterval:', error);
+      this.emitError(`Error en intervalo: ${error}`);
+    }
+  }, delay);
+  
+  this.intervalIds.add(id);
+  return id;
+}
+
+/**
+ * Cancela un timeout específico
+ */
+protected cancelTimeout(id: number): void {
+  clearTimeout(id);
+  this.timeoutIds.delete(id);
+}
+
+/**
+ * Cancela un interval específico
+ */
+protected cancelInterval(id: number): void {
+  clearInterval(id);
+  this.intervalIds.delete(id);
+}
+
+/**
+ * Cancela todos los timers activos
+ */
+protected cancelAllTimers(): void {
+  this.timeoutIds.forEach(id => clearTimeout(id));
+  this.intervalIds.forEach(id => clearInterval(id));
+  this.timeoutIds.clear();
+  this.intervalIds.clear();
+}
+
+
+  /**
+   * Analiza los mapeos para cargar hojas de estilo de terceros si se requieren
+   */
+  private checkAndLoadExternalDependencies(): void {
+    this.formMappings?.forEach(mapping => {
+      // Si el mapeo requiere Quill Editor
+      if (mapping.richTextConfig?.editorType === 'quill') {
+        this.loadCss('https://cdn.quilljs.com/1.3.6/quill.snow.css');
+      }
+      // Si el mapeo requiere Flatpickr
+      if (mapping.dateTimeConfig?.pickerType === 'flatpickr') {
+        this.loadCss('https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css');
+      }
+    });
+  }
+
+private loadCss(href: string): void {
+  if (document.querySelector(`link[href="${href}"]`)) return;
+  
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = href;
+   this.safeTimeout(() => {
+    document.head.appendChild(link);
+  }, 0);
+}
+
+
+
 
   /**
    * Emite un error al exterior del componente, mostrando un mensaje de warning
@@ -1341,5 +1961,14 @@ private checkFileType(file: File, accept: string): boolean {
   private emitError(message: string): void {
     console.warn(`DynamicViewer (${this.contentId}): ${message}`);
     this.componentError.emit(`[${this.contentId}] ${message}`);
+  }
+
+
+  private setControlError(controlName: string, error: any): void {
+    const control = this.dynamicForm.get(controlName);
+    if (control) {
+      control.setErrors(error);
+      control.markAsTouched();
+    }
   }
 }

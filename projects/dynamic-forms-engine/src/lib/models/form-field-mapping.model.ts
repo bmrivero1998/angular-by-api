@@ -19,6 +19,18 @@ export interface FormFieldMapping {
   valueProperty?: string; // Propiedad del elemento a sincronizar. Por defecto 'value'
   useEventDetail?: boolean; // Si es true, busca el valor en event.detail en lugar de event.target.value
   asyncValidator?: AsyncValidatorConfig; // Nueva propiedad PRO
+  toggleConfig?: ToggleConfig;
+  rangeConfig?: RangeConfig;
+  colorConfig?: ColorConfig;
+  dateTimeConfig?: DateTimeConfig;
+  multiSelectConfig?: MultiSelectConfig;
+  captchaConfig?: CaptchaConfig;
+  passwordConfig?: PasswordConfig;
+  sliderInputConfig?: SliderInputConfig;
+  richTextConfig?: RichTextConfig;
+  autoCompleteConfig?: AutoCompleteConfig;
+  fileUploadConfig?: FileUploadConfig;
+  sliderConfig?: SliderConfig;
 }
 
 export interface ButtonConfig {
@@ -49,6 +61,90 @@ export interface AsyncValidatorConfig {
 
 export interface FilePayload {
   controlName: string;
-  file: File;
+  file: File | File[];
   formId: string;
+  isMultiple?: boolean;
 }
+
+ export interface ToggleConfig {
+    checkedClass?: string;
+    uncheckedClass?: string;
+    trueValue?: any;  // Valor cuando está activado (default: true)
+    falseValue?: any; // Valor cuando está desactivado (default: false)
+  };
+  
+  // Para range inputs
+   export interface RangeConfig {
+    displaySelector?: string; // Selector para mostrar el valor actual
+    displayFormat?: string;   // Formato para mostrar (ej: "{value}%")
+    step?: number;           // Incremento del range (default: 1)
+  };
+  
+  // Para color inputs
+   export interface ColorConfig {
+    previewSelector?: string; // Selector para mostrar preview del color
+    defaultColor?: string;    // Color por defecto (default: "#000000")
+  };
+  
+  // Para date/time inputs
+   export interface DateTimeConfig {
+    format?: string;          // Formato para display (ej: "DD/MM/YYYY")
+    pickerType?: 'native' | 'flatpickr' | 'bootstrap'; // Tipo de picker
+    showTime?: boolean;       // Mostrar selector de tiempo
+    minDate?: string | Date;  // Fecha mínima
+    maxDate?: string | Date;  // Fecha máxima
+  };
+  
+  // Para multi-select
+   export interface MultiSelectConfig {
+    separator?: string;       // Separador para valores múltiples
+    maxSelections?: number;   // Máximo número de selecciones
+    displaySelector?: string; // Donde mostrar selecciones actuales
+  };
+  
+  // Para rich text editors
+   export interface RichTextConfig {
+    editorType?: 'quill' | 'tinymce' | 'ckeditor'; // Tipo de editor
+    toolbar?: any;            // Configuración de toolbar
+    height?: number;         // Altura del editor
+  };
+  
+  // Para autocomplete/combobox
+   export interface AutoCompleteConfig {
+    source?: string[] | ((query: string) => Promise<string[]>); // Fuente de datos
+    minChars?: number;        // Mínimo de caracteres para buscar
+    debounceTime?: number;    // Debounce para búsquedas
+  };
+  
+  // Para upload de archivos
+   export interface FileUploadConfig {
+    accept?: string;          // Tipos de archivo aceptados (ej: ".pdf,.docx")
+    maxSize?: number;         // Tamaño máximo en bytes
+    multiple?: boolean;       // Permitir múltiples archivos
+  };
+
+  // Para sliders/carousels
+    export interface SliderConfig {
+    min?: number;             // Valor mínimo
+    max?: number;             // Valor máximo
+    step?: number;            // Incremento
+    orientation?: 'horizontal' | 'vertical'; // Orientación
+  }
+  // Para captchas
+    export interface CaptchaConfig {
+    siteKey: string;          // Clave del sitio
+    theme?: 'light' | 'dark'; // Tema del captcha
+    size?: 'normal' | 'compact'; // Tamaño del captcha
+  } 
+  // Para inputs de tipo password
+    export interface PasswordConfig {
+    strengthMeter?: boolean;  // Mostrar medidor de fuerza
+    toggleVisibility?: boolean; // Permitir mostrar/ocultar contraseña
+  }
+  // Para inputs de tipo slider
+    export interface SliderInputConfig {
+    min?: number;             // Valor mínimo
+    max?: number;             // Valor máximo
+    step?: number;            // Incremento
+    showValue?: boolean;      // Mostrar valor actual
+  }
