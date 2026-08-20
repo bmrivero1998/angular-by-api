@@ -1,59 +1,71 @@
 const fs = require('fs');
 const path = require('path');
 
-// 1. AJUSTA EL NOMBRE DE TU PROYECTO AQUÍ
-// (Debe coincidir con la carpeta que se genera dentro de /dist)
-const projectName = 'dynamic-forms-engine'; 
+// AJUSTA EL NOMBRE DE TU PROYECTO AQUÍ (debe coincidir con outputPath en angular.json)
+const projectName = 'dynamic-forms-engine';
 
-// Rutas de origen y destino
 const distPath = path.join(__dirname, 'dist', projectName);
 const outDir = path.join(__dirname, 'dist', 'elements');
 const outFile = path.join(outDir, 'ux-driven-viewer.js');
 
-// Archivos a unir (en orden estricto)
-const files = [
-  'runtime.js',
-  'polyfills.js',
-  'main.js'
-];
+// Orden estricto: runtime -> polyfills (zone.js) -> main.
+// IMPORTANTE: se concatenan como scripts clásicos, SIN envolver en función/IIFE/module,
+// porque zone.js necesita parchar el scope global directamente. No usar --single-bundle
+// de ngx-build-plus para este build: envuelve el output de forma que rompe ese parcheo
+// y produce NG0908 (Angular requires Zone.js) en runtime.
+const jsFiles = ['runtime.js', 'polyfills.js', 'main.js'];
+const cssFile = 'styles.css';
 
-(async function build() {
-  console.log('🏗️  Iniciando unificación de archivos (Modo Nativo)...');
+(function build() {
+  console.log('🏗️  Iniciando unificación de archivos (concat manual + CSS inyectado)...');
 
-  // Verificar que exista el origen
   if (!fs.existsSync(distPath)) {
     console.error(`❌ Error: No encuentro la carpeta: ${distPath}`);
     console.error('   Asegúrate de haber ejecutado "ng build" primero.');
     process.exit(1);
   }
 
-  // Crear carpeta de destino si no existe
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
   }
 
-  // Leer y concatenar archivos
   try {
     let bundle = '';
-    
-    for (const file of files) {
+
+    for (const file of jsFiles) {
       const filePath = path.join(distPath, file);
       if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath, 'utf8');
-        bundle += content + '\n';
-        console.log(`   + Agregado: ${file}`);
+        bundle += fs.readFileSync(filePath, 'utf8') + '\n';
+        console.log(`   + JS agregado: ${file}`);
       } else {
         console.warn(`   ⚠️ Advertencia: No se encontró ${file}`);
       }
     }
 
-    // Escribir el archivo final
+    // Inyectar CSS como <style> vía JS, corriendo ANTES del bundle de Angular
+    // para que los estilos ya estén en el <head> cuando el custom element renderice.
+    const cssPath = path.join(distPath, cssFile);
+    if (fs.existsSync(cssPath)) {
+      const cssContent = fs.readFileSync(cssPath, 'utf8');
+      const cssInjectionScript = `
+(function () {
+  var __uxDrivenStyle = document.createElement('style');
+  __uxDrivenStyle.setAttribute('data-ux-driven-viewer', 'true');
+  __uxDrivenStyle.textContent = ${JSON.stringify(cssContent)};
+  document.head.appendChild(__uxDrivenStyle);
+})();
+`;
+      bundle = cssInjectionScript + '\n' + bundle;
+      console.log(`   + CSS inyectado vía JS: ${cssFile}`);
+    } else {
+      console.warn(`   ⚠️ No se encontró ${cssFile} (¿no hay estilos globales? revisa si es esperado)`);
+    }
+
     fs.writeFileSync(outFile, bundle);
     console.log('------------------------------------------------');
-    console.log(`✅ ¡Éxito! Archivo generado en:`);
+    console.log('✅ ¡Éxito! Archivo generado en:');
     console.log(`   ${outFile}`);
     console.log('------------------------------------------------');
-
   } catch (err) {
     console.error('❌ Error unificando archivos:', err);
     process.exit(1);

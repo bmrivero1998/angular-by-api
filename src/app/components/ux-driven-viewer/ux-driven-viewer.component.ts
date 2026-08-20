@@ -1,9 +1,8 @@
-import { 
-  Component, 
-  Input, 
-  Output, 
+import {
+  Component,
+  Input,
+  Output,
   EventEmitter,
-  ViewEncapsulation,
   OnInit,
   OnDestroy,
   OnChanges,
@@ -11,62 +10,91 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Observable, Subscription, finalize, take } from 'rxjs';
+import { Observable, Subscription, finalize, take, debounceTime, distinctUntilChanged } from 'rxjs';
 
 // Imports de tu librería
-import { DynamicViewerComponent } from '../../../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
+import { DynamicViewerComponent, ControlChangeEvent } from '../../../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
 import { ApiDrivenContent, DynamicClickPayload } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
 import { DynamicViewerService } from '../../../../projects/dynamic-forms-engine/src/lib/services/dynamic-viewer.service';
 import { ModalService } from '../../../../projects/dynamic-forms-engine/src/lib/services/modal-service.service';
 import { FilePayload } from '../../../../projects/dynamic-forms-engine/src/lib/models/form-field-mapping.model';
+
+/** Snapshot del FormGroup completo, emitido en cada tick relevante. */
+export interface FormStateSnapshot {
+  value: any;
+  valid: boolean;
+  invalid: boolean;
+  dirty: boolean;
+  pristine: boolean;
+  touched: boolean;
+  pending: boolean;
+}
 
 @Component({
   selector: 'ux-driven-viewer-widget',
   standalone: true,
   imports: [CommonModule, DynamicViewerComponent, ReactiveFormsModule],
   templateUrl: './ux-driven-viewer.component.html',
-  encapsulation: ViewEncapsulation.None,
+  // Encapsulación por default (Emulated): cualquier estilo de este componente
+  // queda scoped a él mismo, nunca se fuga a la página host. El diseño real
+  // de cada sección SIEMPRE viene de `cssComponent` en el JSON — este
+  // componente no debe imponer clases ni estilos propios más allá de lo
+  // puramente estructural (el grid de 12 columnas, resuelto vía [ngStyle]
+  // en el template, sin clases) y la animación del spinner de carga, que
+  // por ser un @keyframes no puede expresarse como atributo `style` inline.
   styles: [`
-    .ux-widget-container {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 16px;
-      width: 100%;
-    }
-    @media (max-width: 768px) {
-      .ux-widget-container {
-        display: flex;
-        flex-direction: column;
-      }
+    @keyframes ux-spin {
+      to { transform: rotate(360deg); }
     }
   `]
 })
 export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChanges {
-  
+
   // --------------------------------------------------------
   // Inputs de Configuración y Datos
   // --------------------------------------------------------
-  @Input() apiUrl!: string; // Se mantiene igual por compatibilidad o gusto
-  @Input() localSchema?: any; // Reemplaza UxDrivenJson
+  @Input() apiUrl!: string;
+  @Input() localSchema?: any;
   @Input() externalForm?: FormGroup;
-  @Input() initialData?: any; // Reemplaza data
+  @Input() initialData?: any;
 
   // --------------------------------------------------------
   // Inputs de Modal
   // --------------------------------------------------------
-  @Input() modalEndpoint?: string; // Reemplaza modalApiUrl
-  @Input() modalContext?: any;     // Reemplaza modalData
-  @Input() modalSchema?: any;      // Reemplaza modalJson
+  @Input() modalEndpoint?: string;
+  @Input() modalContext?: any;
+  @Input() modalSchema?: any;
+
+  // --------------------------------------------------------
+  // Inputs de Navegación
+  // --------------------------------------------------------
+  /** Compensación en px para el scroll suave de los anchors (#seccion). Útil si tienes un header sticky que tapa el top de la sección destino. Se propaga a cada <app-dynamic-viewer>. */
+  @Input() scrollOffset = 0;
+  /** Gap en px entre secciones del grid estructural de 12 columnas. Puramente layout, no diseño — el diseño real vive en cssComponent de cada item. */
+  @Input() gridGap = 0;
+
+  // --------------------------------------------------------
+  // Inputs de Telemetría / Debug
+  // --------------------------------------------------------
+  /** Si es true, hace console.group de cada evento interno (control, form, acción). Útil embebido en un host externo sin devtools cómodos. */
+  @Input() debug = false;
+  /** Debounce en ms para `formStateChanged`. 0 = sin debounce (emite en cada tecla). */
+  @Input() formStateDebounce = 150;
 
   // --------------------------------------------------------
   // Outputs (Eventos)
   // --------------------------------------------------------
-  @Output() formSubmit = new EventEmitter<any>();         // Reemplaza formSubmitted
-  @Output() actionTriggered = new EventEmitter<DynamicClickPayload>(); // Reemplaza actionClicked
-  @Output() modalResult = new EventEmitter<any>();        // Reemplaza modalEmitted
-  @Output() errorOccurred = new EventEmitter<string>();   // Reemplaza componentError
-  @Output() ready = new EventEmitter<boolean>();          // Reemplaza loaded
-  @Output() fileSelected = new EventEmitter<FilePayload>(); // Se mantiene igual
+  @Output() formSubmit = new EventEmitter<any>();
+  @Output() actionTriggered = new EventEmitter<DynamicClickPayload>();
+  @Output() modalResult = new EventEmitter<any>();
+  @Output() errorOccurred = new EventEmitter<string>();
+  @Output() ready = new EventEmitter<boolean>();
+  @Output() fileSelected = new EventEmitter<FilePayload>();
+
+  /** Cada vez que CUALQUIER control de CUALQUIER sub-form cambia (valor o estado). */
+  @Output() controlChanged = new EventEmitter<ControlChangeEvent>();
+  /** Snapshot del FormGroup completo (todos los sub-forms combinados), debounced. */
+  @Output() formStateChanged = new EventEmitter<FormStateSnapshot>();
 
   // --------------------------------------------------------
   // Estado Interno
@@ -76,6 +104,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   public isLoading = false;
   public formGroup: FormGroup = new FormGroup({});
   private subs = new Subscription();
+  private formStateSub?: Subscription;
 
   constructor(
     private dws: DynamicViewerService,
@@ -90,43 +119,39 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       this.formGroup = this.externalForm;
     }
     this.initContentStrategy();
+    this.subscribeToFormState();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    // --- 1. ESTRATEGIA DE CONTENIDO (Local vs API) ---
     const jsonChange = changes['localSchema'];
     const apiChange = changes['apiUrl'];
 
-    // CASO A: Nuevo JSON Local recibido
     if (jsonChange && this.localSchema) {
        this.isLoading = true;
        setTimeout(() => {
            this.dws.setLocalContent(this.localSchema);
-           this.handleDataPatching(); 
+           this.handleDataPatching();
            this.isLoading = false;
            this.ready.emit(true);
        }, 0);
     }
-    // CASO B: Cambio en Configuración API
     else if (apiChange && !this.localSchema) {
        if (this.apiUrl && this.apiUrl.trim().length > 0) {
           this.loadDataFromApi();
        }
     }
 
-    // --- 2. SINCRONIZACIÓN DE FORMULARIO EXTERNO ---
     if (changes['externalForm'] && this.externalForm) {
        this.formGroup = this.externalForm;
+       this.subscribeToFormState(); // el FormGroup cambió de instancia, hay que re-suscribir
     }
 
-    // --- 3. PARCHEO DE DATOS ---
     if (changes['initialData'] && this.initialData) {
        this.handleDataPatching();
     }
 
-    // --- 4. GESTOR DE MODALES ---
     const modalKeys = ['modalSchema', 'modalEndpoint', 'modalContext'];
-    const modalTriggered = modalKeys.some(key => 
+    const modalTriggered = modalKeys.some(key =>
         changes[key] && !changes[key].isFirstChange()
     );
 
@@ -135,17 +160,64 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
        if (source) {
           this.openModal(source, undefined, this.modalContext);
        } else {
-          this.modalService.close(); 
+          this.modalService.close();
        }
     }
   }
 
   ngOnDestroy(): void {
     this.subs.unsubscribe();
+    this.formStateSub?.unsubscribe();
   }
 
   public refresh(): void {
     if (this.apiUrl) this.loadData();
+  }
+
+  // --- TELEMETRÍA CENTRALIZADA ---
+
+  /**
+   * Suscribe UNA sola vez a valueChanges/statusChanges del FormGroup raíz
+   * (que agrupa todos los sub-forms de cada <app-dynamic-viewer> vía
+   * parentForm.addControl). Así, sin importar cuántas secciones dinámicas
+   * haya en el JSON, siempre hay UN solo stream con el estado global.
+   */
+  private subscribeToFormState(): void {
+    this.formStateSub?.unsubscribe();
+
+    const emit = () => {
+      const snapshot: FormStateSnapshot = {
+        value: this.formGroup.getRawValue(),
+        valid: this.formGroup.valid,
+        invalid: this.formGroup.invalid,
+        dirty: this.formGroup.dirty,
+        pristine: this.formGroup.pristine,
+        touched: this.formGroup.touched,
+        pending: this.formGroup.pending,
+      };
+      this.formStateChanged.emit(snapshot);
+      this.logDebug('formStateChanged', snapshot);
+    };
+
+    const merged$ = this.formStateDebounce > 0
+      ? this.formGroup.valueChanges.pipe(debounceTime(this.formStateDebounce))
+      : this.formGroup.valueChanges;
+
+    this.formStateSub = merged$.subscribe(emit);
+    this.subs.add(this.formGroup.statusChanges.subscribe(emit));
+  }
+
+  /** Bindeado desde el template a (controlValueChange) de cada <app-dynamic-viewer>. */
+  public handleControlValueChange(event: ControlChangeEvent): void {
+    this.controlChanged.emit(event);
+    this.logDebug('controlChanged', event);
+  }
+
+  private logDebug(label: string, payload: any): void {
+    if (!this.debug) return;
+    console.groupCollapsed(`%c[UXDrivenViewerWidget] ${label}`, 'color:#3b82f6;font-weight:bold;');
+    console.log(payload);
+    console.groupEnd();
   }
 
   // --- LOGICA DE CARGA ---
@@ -155,7 +227,6 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       .pipe(finalize(() => {
         this.isLoading = false;
         this.ready.emit(true);
-        // Si teníamos data pendiente esperando a que cargara el form, la aplicamos ahora
         if (this.initialData) {
             setTimeout(() => this.setFormValues(this.initialData), 100);
         }
@@ -176,10 +247,11 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   // --- LOGICA DE EVENTOS ---
   handleViewerActionClick(payload: DynamicClickPayload): void {
     const action = payload.action;
+    this.logDebug('actionTriggered (raw)', payload);
 
     if (action.includes('modal') || action === 'close') {
-      this.modalService.close(); 
-      return; 
+      this.modalService.close();
+      return;
     }
 
     if (action.includes('reset')) {
@@ -193,7 +265,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
         this.formGroup.markAllAsTouched();
         this.errorOccurred.emit('El formulario contiene errores.');
       }
-      return; 
+      return;
     }
 
     const enrichedPayload = {
@@ -203,7 +275,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
         formValid: this.formGroup.valid
       }
     };
-    
+
     this.actionTriggered.emit(enrichedPayload);
   }
 
@@ -231,12 +303,10 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
 
     Object.keys(data).forEach(key => {
       const value = data[key];
-      
-      // 1. Intento directo (Root Level)
+
       if (this.formGroup.contains(key)) {
          this.formGroup.get(key)?.patchValue(value);
       } else {
-         // 2. Búsqueda Profunda (Deep Search)
          const control = this.findControlDeep(this.formGroup, key);
          if (control) {
              control.patchValue(value);
@@ -244,7 +314,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       }
     });
   }
-  
+
   private handleDataPatching(): void {
       if (this.initialData) {
           setTimeout(() => this.setFormValues(this.initialData), 50);
@@ -256,7 +326,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   }
 
   private findControlDeep(form: FormGroup, controlName: string, depth = 0): AbstractControl | null {
-      if (depth > 10) return null; // Prevención de bucles infinitos
+      if (depth > 10) return null;
       for (const key of Object.keys(form.controls)) {
           const control = form.controls[key];
 
