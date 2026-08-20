@@ -604,7 +604,14 @@ export class DynamicViewerComponent<T = any>
         if (!href) return;
 
         let scrolled = false;
-        if (href.startsWith('#') && href.length > 1) {
+        if (href === '#') {
+          // Convención estándar de HTML: href="#" (sin id) = volver al top
+          // absoluto de la página. Se resuelve aparte porque no hay ningún
+          // elemento que buscar — ignora `scrollOffset` a propósito, porque
+          // "top" significa top de verdad, no "top menos el navbar".
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          scrolled = true;
+        } else if (href.startsWith('#') && href.length > 1) {
           scrolled = this.scrollToSection(href.slice(1));
         }
 
