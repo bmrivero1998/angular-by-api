@@ -6,7 +6,8 @@ import {
   OnInit,
   OnDestroy,
   OnChanges,
-  SimpleChanges
+  SimpleChanges,
+  HostListener
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
@@ -74,6 +75,14 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Input() gridGap = 0;
 
   // --------------------------------------------------------
+  // Inputs del botón "volver arriba"
+  // --------------------------------------------------------
+  /** Si es false, no se renderiza el botón "volver arriba" en absoluto. */
+  @Input() showBackToTop = true;
+  /** Píxeles de scroll antes de que aparezca el botón. */
+  @Input() backToTopThreshold = 400;
+
+  // --------------------------------------------------------
   // Inputs de Telemetría / Debug
   // --------------------------------------------------------
   /** Si es true, hace console.group de cada evento interno (control, form, acción). Útil embebido en un host externo sin devtools cómodos. */
@@ -103,8 +112,27 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   public dynamicContent$: Observable<ApiDrivenContent[]>;
   public isLoading = false;
   public formGroup: FormGroup = new FormGroup({});
+  /** Controla la visibilidad del botón "volver arriba" — vive en el propio widget (código confiable), no en el HTML dinámico del JSON, porque ese HTML pasa por DOMPurify y nunca ejecuta <script>. */
+  public showBackToTopButton = false;
   private subs = new Subscription();
   private formStateSub?: Subscription;
+  private scrollListenerTicking = false;
+
+  @HostListener('window:scroll')
+  onWindowScroll(): void {
+    // Throttle simple con requestAnimationFrame: evita recalcular en cada
+    // evento de scroll (que puede dispararse decenas de veces por segundo).
+    if (this.scrollListenerTicking || !this.showBackToTop) return;
+    this.scrollListenerTicking = true;
+    requestAnimationFrame(() => {
+      this.showBackToTopButton = window.scrollY > this.backToTopThreshold;
+      this.scrollListenerTicking = false;
+    });
+  }
+
+  public scrollToTop(): void {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   constructor(
     private dws: DynamicViewerService,

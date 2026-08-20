@@ -1,3 +1,10 @@
+<!--
+  Sin clases ni estilos propios de contenido: todo el diseño real viene de
+  `cssComponent` en el JSON. Lo único que este contenedor resuelve es la
+  MECÁNICA estructural (grid de 12 columnas) para que los `grid-column: span N`
+  de cada sección tengan contra qué posicionarse — vía [ngStyle] inline,
+  sin clase, sin hoja de estilos externa.
+-->
 <div [ngStyle]="{ display: 'grid', 'grid-template-columns': 'repeat(12, 1fr)', gap: gridGap + 'px', width: '100%' }">
 
   <!-- ========================================== -->
@@ -42,6 +49,34 @@
   </ng-container>
 
 </div>
+
+<!-- ========================================== -->
+<!-- BOTÓN "VOLVER ARRIBA"                       -->
+<!-- Vive fuera del grid a propósito: position:fixed -->
+<!-- se ancla al viewport, no al contenedor de secciones. -->
+<!-- ========================================== -->
+<button
+  *ngIf="showBackToTop && showBackToTopButton"
+  type="button"
+  (click)="scrollToTop()"
+  aria-label="Volver arriba"
+  [ngStyle]="{
+    position: 'fixed',
+    bottom: '24px',
+    right: '24px',
+    width: '48px',
+    height: '48px',
+    'border-radius': '50%',
+    border: 'none',
+    'background-color': 'rgba(0,0,0,0.75)',
+    color: '#ffffff',
+    'font-size': '20px',
+    cursor: 'pointer',
+    'z-index': '9999',
+    'box-shadow': '0 2px 10px rgba(0,0,0,0.3)'
+  }">
+  &uarr;
+</button>
 
 <!-- ========================================== -->
 <!-- TEMPLATE REUTILIZABLE (Motor de Render)    -->
