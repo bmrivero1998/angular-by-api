@@ -241,10 +241,14 @@ Busca el elemento por selector y le setea `textContent` — útil para valores q
 
 ```bash
 npm run build:pro
-# = ng build --configuration=production --output-hashing=none && node build-elements.js
+# = ng build --configuration=production --output-hashing=none && node scripts/build-elements.js
 ```
 
-`build-elements.js` concatena `runtime.js + polyfills.js + main.js` **como scripts clásicos, en ese orden, sin envolver en función/módulo** (necesario para que `zone.js` parche el scope global correctamente), e inyecta el `styles.css` vía un `<style>` creado por JS al inicio del bundle. **No usar `--single-bundle` de `ngx-build-plus`** para este build — envuelve el output de forma que rompe el parcheo de `zone.js` y produce `NG0908` en runtime.
+`scripts/build-elements.js` concatena `runtime.js + polyfills.js + main.js` **como scripts clásicos, en ese orden, sin envolver en función/módulo** (necesario para que `zone.js` parche el scope global correctamente), e inyecta el `styles.css` vía un `<style>` creado por JS al inicio del bundle. El resultado queda en `dist/elements/ux-driven-viewer.js`. **No usar `--single-bundle` de `ngx-build-plus`** para este build — envuelve el output de forma que rompe el parcheo de `zone.js` y produce `NG0908` en runtime.
+
+Para probar el widget ya buildeado sin subirlo a ningún host, abre `examples/demo.html` (sirviéndolo con un servidor estático, no con `file://`, para que los `<script type="module">` funcionen) después de correr `ng build`.
+
+Ver [`ARCHITECTURE.md`](./ARCHITECTURE.md) para un mapa completo de cómo está organizado el repo (librería, app de desarrollo, scripts y ejemplos).
 
 ---
 

@@ -2,8 +2,8 @@
  "name": "ux-driven-viewer",
  "version": "1.0.3",
  "scripts": {
-  "build:pro": "ng build --configuration=production --output-hashing=none && node build-elements.js",
-  "build:widget": "ng build --output-hashing=none && node build-elements.js"
+  "build:pro": "ng build --configuration=production --output-hashing=none && node scripts/build-elements.js",
+  "build:widget": "ng build --output-hashing=none && node scripts/build-elements.js"
  },
  "private": true,
  "dependencies": {

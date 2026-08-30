@@ -4,8 +4,8 @@ const path = require('path');
 // AJUSTA EL NOMBRE DE TU PROYECTO AQUÍ (debe coincidir con outputPath en angular.json)
 const projectName = 'dynamic-forms-engine';
 
-const distPath = path.join(__dirname, 'dist', projectName);
-const outDir = path.join(__dirname, 'dist', 'elements');
+const distPath = path.join(__dirname, '..', 'dist', projectName);
+const outDir = path.join(__dirname, '..', 'dist', 'elements');
 const outFile = path.join(outDir, 'ux-driven-viewer.js');
 
 // Orden estricto: runtime -> polyfills (zone.js) -> main.

@@ -1,13 +1,18 @@
+// Script legado: alternativa a scripts/build-elements.js que envuelve el main
+// de Angular en una IIFE y elimina los `export` a mano. Se mantiene como
+// referencia histórica, pero NO forma parte de ningún script de package.json:
+// el build oficial del widget usa scripts/build-elements.js (ver README).
 const fs = require('fs-extra');
 const path = require('path');
 
 (async function build() {
     // --- CONFIGURACIÓN ---
     // Asegúrate de que este nombre coincida con tu carpeta en dist
-    const folderName = 'dynamic-forms-engine'; 
-    const projectDist = path.join(__dirname, 'dist', folderName, 'browser'); 
-    
-    const outputDir = path.join(__dirname, 'dist', 'bundle');
+    const folderName = 'dynamic-forms-engine';
+    const rootDir = path.join(__dirname, '..', '..');
+    const projectDist = path.join(rootDir, 'dist', folderName, 'browser');
+
+    const outputDir = path.join(rootDir, 'dist', 'bundle');
     const outputFile = path.join(outputDir, 'dynamic-engine.js');
 
     try {
