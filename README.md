@@ -1,6 +1,83 @@
-# ux-driven-viewer — Guía de consumo del MFE
+# ux-driven-viewer
 
-Motor de UI dinámica ("Backend-Driven UI"): recibe un JSON que describe secciones de pantalla (HTML + CSS + validación de formularios + acciones) y lo renderiza como Angular real dentro de un **custom element**, embebible en cualquier página con una línea de `<script>`.
+**Motor de UI dinámica ("Backend-Driven UI") para Angular.** Recibe un JSON que describe secciones de pantalla — HTML, CSS, validación de formularios y acciones — y lo renderiza como Angular real dentro de un **custom element**, embebible en cualquier página host con una línea de `<script>`, sin que el host necesite saber que hay Angular detrás.
+
+![Angular](https://img.shields.io/badge/Angular-19-dd0031?logo=angular&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6?logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-264%20passing-brightgreen)
+![License](https://img.shields.io/badge/uso-interno-lightgrey)
+
+## Índice
+
+- [Arquitectura](#arquitectura)
+- [Desarrollo](#desarrollo)
+- [Testing](#testing)
+- [Contribuir](#contribuir)
+- **Guía de consumo del widget** (Backend-Driven UI):
+  1. [Instalación en un host](#1-instalación-en-un-host)
+  2. [Atributos del elemento](#2-atributos-del-elemento-input)
+  3. [Eventos que emite](#3-eventos-que-emite-customevent-eventdetail)
+  4. [Formato del JSON](#4-formato-del-json-local-schema--respuesta-de-api-url)
+  5. [`formMappings` — validadores y controles](#5-formmappings--validadores-y-controles)
+  6. [Convención de HTML esperada](#6-convención-de-html-esperada)
+  7. [`buttonConfigs`](#7-buttonconfigs--habilitardeshabilitar-botones)
+  8. [`dataBindings`](#8-databindings--texto-estático-inyectado-post-render)
+  9. [Navegación / scroll](#9-convención-de-navegación--scroll-links-a-href)
+  10. [Requisitos del host](#10-requisitos-y-recomendaciones-del-host)
+  11. [Build interno](#11-build-interno-referencia-para-el-equipo)
+  12. [Seguridad](#12-seguridad)
+
+---
+
+## Arquitectura
+
+El repo tiene dos piezas:
+
+- **`projects/dynamic-forms-engine/`** — la librería Angular publicable (el motor). Todo lo que describe el resto de este README vive acá.
+- **`src/`** — una app Angular de demo/host que consume la librería, sirve de banco de pruebas y produce el bundle final del custom element (`ux-driven-viewer.js`) vía `build-elements.js`.
+
+Dentro de la librería, la responsabilidad está separada por capas en vez de vivir en un componente o servicio monolítico:
+
+| Capa | Responsabilidad |
+|---|---|
+| `DynamicViewerComponent` | Orquestador Angular: ciclo de vida, construcción del `FormGroup`, API pública del componente. Delega el resto. |
+| `FormDomSynchronizerService` | Orquestador de la sincronización DOM ↔ `FormGroup`. |
+| `FormConditionalLogicService` | Visibilidad condicional (`showIf`/`hideIf`) y evaluación segura de expresiones. |
+| `FormSpecialControlsService` | Widgets externos (Quill, Flatpickr, reCAPTCHA) y controles especiales (range, color, multi-select, password toggle). |
+| `FormDomValueSyncService` | Lectura/escritura de valores y clases de validación entre el `FormControl` y el DOM. |
+| `DomInteractionsService` | Cableado de listeners sobre el HTML inyectado: submit, clicks de acción, key filtering, auto-formato, navegación/scroll, inputs de archivo. |
+| `HtmlSanitizerInterceptor` / `MockErrorHandlerInterceptor` | Sanitización de HTML/CSS entrante y páginas de fallback (404 / acceso denegado / mantenimiento / error genérico) ante fallas de la API. |
+
+Cada servicio es inyectable y testeable de forma aislada — ver [Testing](#testing).
+
+## Desarrollo
+
+Requiere Node 18+ y Angular CLI (`npm i -g @angular/cli`, opcional — también corre vía `npx`).
+
+```bash
+npm install
+npm start          # ng serve — levanta la app de demo en http://localhost:4200
+npm run build      # build de desarrollo de la app de demo
+npm run build:pro  # build de producción del widget + empaquetado (ver sección 11)
+```
+
+## Testing
+
+El repo tiene dos suites independientes (una por proyecto de `angular.json`):
+
+```bash
+npm test            # suite de la app de demo (src/app)
+npm run test:lib     # suite de dynamic-forms-engine (la librería)
+npm run test:ci      # ambas, en modo headless/CI (--watch=false)
+```
+
+Estado actual: **264 tests, 0 fallos** (221 en la librería, 43 en la app). Cada servicio de la tabla de arquitectura tiene su propio spec; los interceptores de red y los flujos de error/mantenimiento también están cubiertos.
+
+## Contribuir
+
+- Commits en español, prefijo por tipo (`feat:`, `fix:`, `refactor:`, `doc:`), en modo imperativo y describiendo el _por qué_ cuando no es obvio — es la convención ya usada en el historial del repo.
+- Antes de abrir un PR: `npm run test:ci` en verde. Un cambio que introduce una regla de negocio nueva sin un test que la cubra no está completo.
+- Servicios nuevos van a `projects/dynamic-forms-engine/src/lib/services/`, con un único responsable claro (ver la tabla de arquitectura) — evita agregar lógica de DOM/formularios directamente al componente.
 
 ---
 

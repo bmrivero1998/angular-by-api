@@ -1,9 +1,15 @@
 {
  "name": "ux-driven-viewer",
  "version": "1.0.3",
+ "description": "Motor de UI dinámica (Backend-Driven UI) empaquetado como custom element de Angular.",
  "scripts": {
+  "start": "ng serve",
+  "build": "ng build",
   "build:pro": "ng build --configuration=production --output-hashing=none && node build-elements.js",
-  "build:widget": "ng build --output-hashing=none && node build-elements.js"
+  "build:widget": "ng build --output-hashing=none && node build-elements.js",
+  "test": "ng test",
+  "test:lib": "ng test dynamic-forms-engine",
+  "test:ci": "ng test --watch=false --browsers=ChromeHeadless && ng test dynamic-forms-engine --watch=false --browsers=ChromeHeadless"
  },
  "private": true,
  "dependencies": {
