@@ -8,8 +8,23 @@ import {
 } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import * as DOMPurify from 'dompurify';
+import DOMPurify from 'dompurify';
 import { DYNAMIC_CONFIG } from '../dynamic-config.token';
+
+const DEFAULT_ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'a', 'div', 'p', 'input'];
+const STRICT_ALLOWED_TAGS = ['b', 'i', 'em', 'strong', 'p'];
+
+// Patrones de CSS conocidos como vectores de ataque (inyección de JS vía
+// expression()/behavior, o carga de recursos externos vía @import/url()).
+const CSS_DANGEROUS_PATTERNS = [
+  /expression\s*\(/gi,
+  /@import/gi,
+  /javascript\s*:/gi,
+  /behavior\s*:/gi,
+  /-moz-binding/gi,
+  /<\s*\/?\s*script/gi,
+];
+const CSS_EXTERNAL_URL_PATTERN = /url\(\s*['"]?\s*(?:https?:)?\/\/[^)]*\)/gi;
 
 /**
  * @description
@@ -71,21 +86,66 @@ export class HtmlSanitizerInterceptor implements HttpInterceptor {
         const value = data[key];
 
         if (this.htmlFields.has(key) && typeof value === 'string') {
-          try {
-            const rawHtml = JSON.parse(value);
-            const sanitizedHtml = DOMPurify.default.sanitize(rawHtml, {
-              ALLOWED_TAGS: this.config?.allowedHtmlTags || ['b', 'i', 'em', 'strong', 'a', 'div', 'p', 'input']
-            });
-            data[key] = JSON.stringify(sanitizedHtml);
-          } catch (e) {
-            console.error(`Error al procesar el campo HTML '${key}'.`, e);
-          }
+          data[key] = this.sanitizeHtmlField(key, value);
         } else if (this.cssFields.has(key) && typeof value === 'string') {
-        
+          data[key] = this.sanitizeCssField(key, value);
         } else {
           this.sanitizeObjectProperties(value);
         }
       }
+    }
+  }
+
+  /**
+   * Sanitiza un campo HTML. Ante cualquier fallo de parseo o sanitización
+   * se descarta el contenido (fail-closed) en vez de dejar pasar el valor
+   * crudo sin verificar.
+   */
+  private sanitizeHtmlField(key: string, value: string): string {
+    if (this.config?.sanitizationLevel === 'none') {
+      return value;
+    }
+
+    try {
+      const rawHtml = JSON.parse(value);
+      const allowedTags =
+        this.config?.sanitizationLevel === 'strict'
+          ? STRICT_ALLOWED_TAGS
+          : this.config?.allowedHtmlTags || DEFAULT_ALLOWED_TAGS;
+
+      const sanitizedHtml = DOMPurify.sanitize(rawHtml, { ALLOWED_TAGS: allowedTags });
+      return JSON.stringify(sanitizedHtml);
+    } catch (e) {
+      console.error(`Error al procesar el campo HTML '${key}'. Se descarta el contenido.`, e);
+      return JSON.stringify('');
+    }
+  }
+
+  /**
+   * Sanitiza un campo CSS eliminando construcciones conocidas como vectores
+   * de ataque (expression(), @import, javascript:, behavior:, -moz-binding)
+   * y, opcionalmente, cualquier url() que apunte a un recurso externo.
+   * Ante un fallo inesperado se descarta el contenido (fail-closed).
+   */
+  private sanitizeCssField(key: string, value: string): string {
+    if (this.config?.sanitizationLevel === 'none') {
+      return value;
+    }
+
+    try {
+      let sanitizedCss = value;
+      for (const pattern of CSS_DANGEROUS_PATTERNS) {
+        sanitizedCss = sanitizedCss.replace(pattern, '');
+      }
+
+      if (this.config?.disallowExternalCssResources) {
+        sanitizedCss = sanitizedCss.replace(CSS_EXTERNAL_URL_PATTERN, "url('about:blank')");
+      }
+
+      return sanitizedCss;
+    } catch (e) {
+      console.error(`Error al procesar el campo CSS '${key}'. Se descarta el contenido.`, e);
+      return '';
     }
   }
 }
