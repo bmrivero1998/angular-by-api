@@ -88,6 +88,13 @@ export class FormDomValueSyncService {
       const eventToListen = mapping.eventType || this.determineDefaultEvent(el);
 
       const unlisten = this.renderer.listen(el, eventToListen, (event: Event) => {
+        // Un radio que se desmarca (perdió el check frente a otro del mismo
+        // grupo) no debe "vaciar" el control: solo el radio que SÍ quedó
+        // marcado es la fuente de verdad del nuevo valor.
+        if (!mapping.valueProperty && el instanceof HTMLInputElement && el.type === 'radio' && !el.checked) {
+          return;
+        }
+
         let newValue: any;
 
         if (mapping.valueProperty) {

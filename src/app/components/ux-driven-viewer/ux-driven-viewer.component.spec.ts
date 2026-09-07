@@ -6,28 +6,36 @@ import { of, throwError } from 'rxjs';
 import { SimpleChange, SimpleChanges } from '@angular/core';
 import { UXDrivenViewerWidgetComponent } from './ux-driven-viewer.component';
 
-describe('UXDrivenViewerWidgetComponent (100% Coverage)', () => {
+/**
+ * Nota: este spec fue reescrito porque apuntaba a nombres de Inputs/Outputs
+ * de una versión anterior del componente (UxDrivenJson, apiURL, data,
+ * modalApiUrl/modalData/modalJson, componentError, formSubmitted,
+ * actionClicked, modalEmitted) que ya no existen — la API actual es
+ * localSchema/apiUrl/initialData/modalSchema/modalEndpoint/modalContext/
+ * errorOccurred/formSubmit/actionTriggered/modalResult. El comportamiento
+ * verificado es el mismo, solo se actualizaron los nombres y las señales
+ * async (ngOnInit ya no difiere el setLocalContent, solo ngOnChanges lo hace).
+ */
+describe('UXDrivenViewerWidgetComponent', () => {
   let component: UXDrivenViewerWidgetComponent;
   let fixture: ComponentFixture<UXDrivenViewerWidgetComponent>;
   let dwsSpy: jasmine.SpyObj<DynamicViewerService>;
   let modalServiceSpy: jasmine.SpyObj<ModalService>;
 
   beforeEach(async () => {
-    // Mockeamos todas las dependencias
     dwsSpy = jasmine.createSpyObj('DynamicViewerService', ['loadInitialContent', 'setLocalContent'], {
       staticContent$: of([]),
-      dynamicContent$: of([])
+      dynamicContent$: of([]),
     });
 
     modalServiceSpy = jasmine.createSpyObj('ModalService', ['open', 'close']);
 
     await TestBed.configureTestingModule({
-      // Importamos el componente standalone directamente
       imports: [UXDrivenViewerWidgetComponent, ReactiveFormsModule],
       providers: [
         { provide: DynamicViewerService, useValue: dwsSpy },
-        { provide: ModalService, useValue: modalServiceSpy }
-      ]
+        { provide: ModalService, useValue: modalServiceSpy },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(UXDrivenViewerWidgetComponent);
@@ -43,145 +51,145 @@ describe('UXDrivenViewerWidgetComponent (100% Coverage)', () => {
     it('should set external form if provided in ngOnInit', () => {
       const externalForm = new FormGroup({ test: new FormControl('') });
       component.externalForm = externalForm;
-      component.ngOnInit(); // Llamamos manualmente para probar lógica interna
+      component.ngOnInit();
       expect(component.formGroup).toBe(externalForm);
     });
 
-    it('should initialize content with local JSON if provided', fakeAsync(() => {
-      const mockJson = [{ id: 'local' }];
-      component.UxDrivenJson = mockJson;
-      
-      component.ngOnInit(); // Llama a initContentStrategy
-      tick(); // Procesa el setLocalContent
+    it('should initialize content with local schema if provided', () => {
+      const mockSchema = [{ id: 'local' }];
+      component.localSchema = mockSchema;
 
-      expect(dwsSpy.setLocalContent).toHaveBeenCalledWith(mockJson);
+      component.ngOnInit();
+
+      expect(dwsSpy.setLocalContent).toHaveBeenCalledWith(mockSchema);
       expect(component.isLoading).toBeFalse();
-    }));
+    });
 
-    it('should initialize content from API if URL provided and no local JSON', () => {
-      component.apiURL = 'init-api';
+    it('should initialize content from API if URL provided and no local schema', () => {
+      component.apiUrl = 'init-api';
       dwsSpy.loadInitialContent.and.returnValue(of([]));
-      
-      component.ngOnInit(); 
-      
+
+      component.ngOnInit();
+
       expect(dwsSpy.loadInitialContent).toHaveBeenCalledWith('init-api');
     });
   });
 
   // --- 2. CAMBIOS EN INPUTS (ngOnChanges) ---
   describe('ngOnChanges', () => {
-    // Caso: Cambio de JSON Local
-    it('should process new local JSON when UxDrivenJson input changes', fakeAsync(() => {
+    it('should process new local schema when localSchema input changes', fakeAsync(() => {
+      component.localSchema = [{ id: 'new' }];
       const changes: SimpleChanges = {
-        UxDrivenJson: new SimpleChange(null, [{ id: 'new' }], false)
+        localSchema: new SimpleChange(null, component.localSchema, false),
       };
-      component.UxDrivenJson = [{ id: 'new' }];
-      
+
       component.ngOnChanges(changes);
       expect(component.isLoading).toBeTrue();
-      
-      tick(0); // Resolvemos el setTimeout(0)
-      
+
+      tick(0); // Resuelve el setTimeout(0)
+
       expect(dwsSpy.setLocalContent).toHaveBeenCalled();
       expect(component.isLoading).toBeFalse();
     }));
 
-    // Caso: Cambio de API URL
-    it('should reload from API when apiURL changes', () => {
-      component.apiURL = 'updated-url';
+    it('should reload from API when apiUrl changes', () => {
+      component.apiUrl = 'updated-url';
       dwsSpy.loadInitialContent.and.returnValue(of([]));
       const changes: SimpleChanges = {
-        apiURL: new SimpleChange('old', 'updated-url', false)
+        apiUrl: new SimpleChange('old', 'updated-url', false),
       };
 
       component.ngOnChanges(changes);
       expect(dwsSpy.loadInitialContent).toHaveBeenCalledWith('updated-url');
     });
 
-    // Caso: Cambio de Formulario Externo
     it('should replace formGroup when externalForm changes', () => {
       const newForm = new FormGroup({});
       component.externalForm = newForm;
       const changes: SimpleChanges = {
-        externalForm: new SimpleChange(null, newForm, false)
+        externalForm: new SimpleChange(null, newForm, false),
       };
 
       component.ngOnChanges(changes);
       expect(component.formGroup).toBe(newForm);
     });
 
-    // Caso: Parcheo de Datos (Data Patching)
-    it('should patch data when "data" input changes', fakeAsync(() => {
+    it('should patch data when "initialData" input changes', fakeAsync(() => {
       spyOn(component, 'setFormValues');
-      component.data = { some: 'value' };
+      component.initialData = { some: 'value' };
       const changes: SimpleChanges = {
-        data: new SimpleChange(null, component.data, false)
+        initialData: new SimpleChange(null, component.initialData, false),
       };
 
       component.ngOnChanges(changes);
-      tick(50); // Resolvemos el delay técnico
-      expect(component.setFormValues).toHaveBeenCalledWith(component.data);
+      tick(50); // Resuelve el delay técnico de handleDataPatching
+
+      expect(component.setFormValues).toHaveBeenCalledWith(component.initialData);
     }));
 
-    // Caso: Modales (Apertura)
     it('should open modal when modal parameters change', () => {
-      component.modalApiUrl = 'modal-api';
-      component.modalData = { id: 1 };
+      component.modalEndpoint = 'modal-api';
+      component.modalContext = { id: 1 };
       modalServiceSpy.open.and.returnValue(of({}));
-      
+
       const changes: SimpleChanges = {
-        modalApiUrl: new SimpleChange(null, 'modal-api', false)
+        modalEndpoint: new SimpleChange(null, 'modal-api', false),
       };
 
       component.ngOnChanges(changes);
       expect(modalServiceSpy.open).toHaveBeenCalledWith('modal-api', undefined, { id: 1 });
     });
 
-    // Caso: Modales (Cierre)
     it('should close modal if triggered but no source provided', () => {
-      // Simulamos que cambió el parametro pero están vacíos
-      component.modalJson = null;
-      component.modalApiUrl = undefined;
+      component.modalSchema = null;
+      component.modalEndpoint = undefined;
       const changes: SimpleChanges = {
-        modalJson: new SimpleChange('old', null, false)
+        modalSchema: new SimpleChange('old', null, false),
       };
 
       component.ngOnChanges(changes);
       expect(modalServiceSpy.close).toHaveBeenCalled();
     });
+
+    it('should ignore modal params on their firstChange (no apertura espontánea al inicializar)', () => {
+      component.modalEndpoint = 'modal-api';
+      const changes: SimpleChanges = {
+        modalEndpoint: new SimpleChange(undefined, 'modal-api', true),
+      };
+
+      component.ngOnChanges(changes);
+      expect(modalServiceSpy.open).not.toHaveBeenCalled();
+    });
   });
 
   // --- 3. MÉTODOS PÚBLICOS Y UTILITARIOS (Refresh & Errors) ---
   describe('Public Methods & Error Handling', () => {
-    it('should call loadData on refresh()', () => {
-      component.apiURL = 'refresh-url';
+    it('should call loadInitialContent on refresh()', () => {
+      component.apiUrl = 'refresh-url';
       dwsSpy.loadInitialContent.and.returnValue(of([]));
-      
+
       component.refresh();
       expect(dwsSpy.loadInitialContent).toHaveBeenCalled();
     });
 
-    it('should emit componentError when loadData fails (API Error)', () => {
-      spyOn(component.componentError, 'emit');
-      component.apiURL = 'error-url';
-      // Simulamos error del servicio
+    it('should emit errorOccurred when loadData fails (API Error)', () => {
+      spyOn(component.errorOccurred, 'emit');
+      component.apiUrl = 'error-url';
       dwsSpy.loadInitialContent.and.returnValue(throwError(() => new Error('API Fail')));
-      
-      // Llamamos al método privado indirectamente o via refresh/init
+
       component.refresh();
-      
-      expect(component.isLoading).toBeFalse(); // Finalize se ejecuta
-      expect(component.componentError.emit).toHaveBeenCalledWith(jasmine.stringMatching(/Error/));
+
+      expect(component.isLoading).toBeFalse(); // finalize se ejecuta igual
+      expect(component.errorOccurred.emit).toHaveBeenCalledWith(jasmine.stringMatching(/Error/));
     });
-    
-    // Testeamos el método onFormSubmitted directamente
-    it('should emit data when onFormSubmitted is called', () => {
-      spyOn(component.formSubmitted, 'emit');
+
+    it('should emit formSubmit when onFormSubmitted is called', () => {
+      spyOn(component.formSubmit, 'emit');
       const eventPayload = { formId: 'test', data: { foo: 'bar' } };
-      
+
       component.onFormSubmitted(eventPayload);
-      
-      expect(component.formSubmitted.emit).toHaveBeenCalledWith({ foo: 'bar' });
+
+      expect(component.formSubmit.emit).toHaveBeenCalledWith({ foo: 'bar' });
     });
   });
 
@@ -189,7 +197,7 @@ describe('UXDrivenViewerWidgetComponent (100% Coverage)', () => {
   describe('Action Handling', () => {
     beforeEach(() => {
       component.formGroup = new FormGroup({
-        name: new FormControl('Test', Validators.required)
+        name: new FormControl('Test', Validators.required),
       });
     });
 
@@ -209,73 +217,107 @@ describe('UXDrivenViewerWidgetComponent (100% Coverage)', () => {
     });
 
     it('should submit form if valid on "submit" action', () => {
-      spyOn(component.formSubmitted, 'emit');
+      spyOn(component.formSubmit, 'emit');
       component.handleViewerActionClick({ action: 'submit-btn', sourceId: '1' });
-      expect(component.formSubmitted.emit).toHaveBeenCalledWith({ name: 'Test' });
+      expect(component.formSubmit.emit).toHaveBeenCalledWith({ name: 'Test' });
     });
 
     it('should emit error if form invalid on "submit" action', () => {
-      spyOn(component.componentError, 'emit');
+      spyOn(component.errorOccurred, 'emit');
       component.formGroup.get('name')?.setValue(''); // Invalidamos
-      
+
       component.handleViewerActionClick({ action: 'submit-btn', sourceId: '1' });
-      
+
       expect(component.formGroup.touched).toBeTrue();
-      expect(component.componentError.emit).toHaveBeenCalled();
+      expect(component.errorOccurred.emit).toHaveBeenCalled();
     });
 
-    it('should emit actionClicked for generic actions', () => {
-      spyOn(component.actionClicked, 'emit');
+    it('should emit actionTriggered for generic actions', () => {
+      spyOn(component.actionTriggered, 'emit');
       component.handleViewerActionClick({ action: 'custom', sourceId: '1' });
-      
-      expect(component.actionClicked.emit).toHaveBeenCalledWith(jasmine.objectContaining({
-        action: 'custom',
-        context: jasmine.any(Object)
-      }));
+
+      expect(component.actionTriggered.emit).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          action: 'custom',
+          context: jasmine.any(Object),
+        })
+      );
     });
   });
 
   // --- 5. PARCHEO PROFUNDO (Deep Patching & Recursion) ---
   describe('Recursive Data Patching', () => {
     it('should patch nested form groups correctly (Deep Search)', () => {
-      // Estructura compleja
       component.formGroup = new FormGroup({
         personal: new FormGroup({
           address: new FormGroup({
-            city: new FormControl('') // Nivel 3 de profundidad
-          })
-        })
+            city: new FormControl(''), // Nivel 3 de profundidad
+          }),
+        }),
       });
 
-      // El parcheo recibe { city: 'Mexico' } y debe encontrarlo en el fondo
       component.setFormValues({ city: 'Mexico' });
-      
+
       expect(component.formGroup.get('personal.address.city')?.value).toBe('Mexico');
     });
 
     it('should ignore keys that do not exist in the form', () => {
       component.formGroup = new FormGroup({ name: new FormControl('') });
-      // "age" no existe, no debería explotar
       expect(() => component.setFormValues({ age: 99 })).not.toThrow();
     });
   });
 
   // --- 6. INTERACCIÓN MODAL (Result Handling) ---
   describe('Modal Results', () => {
-    it('should emit modal result when closed', () => {
-      spyOn(component.modalEmitted, 'emit');
+    it('should emit modalResult when closed', () => {
+      spyOn(component.modalResult, 'emit');
       const mockResult = { genericForm: { success: true } };
-      
-      // Simulamos que el observable del modal devuelve un valor
+
       modalServiceSpy.open.and.returnValue(of(mockResult));
 
-      // Trigger via cambio de input
-      component.modalApiUrl = 'test';
+      component.modalEndpoint = 'test';
       component.ngOnChanges({
-        modalApiUrl: new SimpleChange(null, 'test', false)
+        modalEndpoint: new SimpleChange(null, 'test', false),
       });
 
-      expect(component.modalEmitted.emit).toHaveBeenCalledWith({ success: true });
+      expect(component.modalResult.emit).toHaveBeenCalledWith({ success: true });
+    });
+  });
+
+  // --- 7. TELEMETRÍA (formStateChanged / controlChanged) ---
+  describe('Telemetría centralizada', () => {
+    it('emite formStateChanged con un snapshot del formGroup en cada valueChange', fakeAsync(() => {
+      component.formStateDebounce = 0;
+      component.formGroup = new FormGroup({ name: new FormControl('') });
+      component.ngOnInit();
+
+      let lastSnapshot: any;
+      component.formStateChanged.subscribe((s) => (lastSnapshot = s));
+
+      component.formGroup.get('name')?.setValue('Ana');
+      tick();
+
+      expect(lastSnapshot.value).toEqual({ name: 'Ana' });
+      expect(lastSnapshot.valid).toBeTrue();
+    }));
+
+    it('reemite cada ControlChangeEvent recibido como controlChanged', () => {
+      spyOn(component.controlChanged, 'emit');
+      const event = {
+        controlName: 'name',
+        value: 'x',
+        formId: 'f1',
+        valid: true,
+        invalid: false,
+        dirty: true,
+        touched: true,
+        pending: false,
+        errors: null,
+      };
+
+      component.handleControlValueChange(event);
+
+      expect(component.controlChanged.emit).toHaveBeenCalledWith(event);
     });
   });
 });

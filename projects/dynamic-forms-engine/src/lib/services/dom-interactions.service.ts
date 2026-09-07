@@ -1,4 +1,4 @@
-import { Injectable, Renderer2 } from '@angular/core';
+import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { DynamicClickPayload } from '../interfaces/DynamicContent.interface';
@@ -35,11 +35,20 @@ export interface DomInteractionsContext {
   providedIn: 'root',
 })
 export class DomInteractionsService {
+  // `Renderer2` no es inyectable directamente en un servicio `providedIn:
+  // 'root'` (solo el compilador lo provee mágicamente por-componente); hay
+  // que pedir `RendererFactory2` (sí es un provider real de la app) y crear
+  // el renderer manualmente, igual que el resto de los servicios de la
+  // librería que también lo necesitan.
+  private renderer: Renderer2;
+
   constructor(
-    private renderer: Renderer2,
+    rendererFactory: RendererFactory2,
     private inputMasking: InputMaskingService,
     private fileUpload: FileUploadService,
-  ) {}
+  ) {
+    this.renderer = rendererFactory.createRenderer(null, null);
+  }
 
   public setupFormSubmitPrevention(ctx: DomInteractionsContext, onSubmit: () => void): Array<() => void> {
     const listeners: Array<() => void> = [];

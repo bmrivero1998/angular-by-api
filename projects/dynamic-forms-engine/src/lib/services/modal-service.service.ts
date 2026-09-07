@@ -6,7 +6,7 @@ import {
   EmbeddedViewRef,
   ComponentRef, // Importante
 } from '@angular/core';
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, Subscription } from 'rxjs';
 import { DynamicContentService } from './dynamic-content.service';
 import { ApiDrivenContent } from '../interfaces/DynamicContent.interface';
 import { ModalFrameComponent } from '../../../../../src/app/components/modal-frame/modal-frame.component';
@@ -19,6 +19,12 @@ export class ModalService {
   
   // ARREGLO 1: Guardamos la referencia del componente vivo para poder matarlo después
   private activeComponentRef: ComponentRef<ModalFrameComponent> | null = null;
+  // Suscripciones a los EventEmitters del componente activo (close/triggerAction).
+  // Sin esto, cada `open()` deja una suscripción viva sobre la instancia
+  // anterior — no se dispara en producción porque su DOM ya está desmontado,
+  // pero es una fuga de memoria real y, si algo (test o no) reutiliza la
+  // instancia, provoca que el mismo evento se procese más de una vez.
+  private activeComponentSubscriptions = new Subscription();
 
   constructor(
     private componentFactoryResolver: ComponentFactoryResolver,
@@ -91,14 +97,20 @@ export class ModalService {
 
     componentRef.instance.contentConfig = contentConfig;
 
-    // Suscripción al evento de cierre INTERNO del componente (la X o backdrop)
-    componentRef.instance.close.subscribe((result: any) => {
-      this.close(result); // Reutilizamos el método público
-    });
+    this.activeComponentSubscriptions = new Subscription();
 
-    componentRef.instance.triggerAction.subscribe((eventData: any) => {
-       this.modalResult$.next(eventData);
-    });
+    // Suscripción al evento de cierre INTERNO del componente (la X o backdrop)
+    this.activeComponentSubscriptions.add(
+      componentRef.instance.close.subscribe((result: any) => {
+        this.close(result); // Reutilizamos el método público
+      })
+    );
+
+    this.activeComponentSubscriptions.add(
+      componentRef.instance.triggerAction.subscribe((eventData: any) => {
+        this.modalResult$.next(eventData);
+      })
+    );
 
     this.appRef.attachView(componentRef.hostView);
 
@@ -116,6 +128,7 @@ export class ModalService {
     this.modalResult$ = new Subject<any>(); // Reset del subject
 
     // 2. DESTRUIR EL COMPONENTE VISUAL
+    this.activeComponentSubscriptions.unsubscribe();
     if (this.activeComponentRef) {
         this.appRef.detachView(this.activeComponentRef.hostView);
         this.activeComponentRef.destroy();

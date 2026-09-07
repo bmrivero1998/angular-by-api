@@ -157,7 +157,9 @@ describe('DynamicViewerService', () => {
       const content = service.getDynamicContentValue()[0];
       
       expect(content.htmlComponent).toContain('<thead');
-      expect(content.htmlComponent).toContain('<th>Name</th>');
+      // El <th> real incluye scope="col" (accesibilidad), por eso se matchea
+      // por contenido en vez de una etiqueta exacta sin atributos.
+      expect(content.htmlComponent).toMatch(/<th[^>]*>Name<\/th>/);
       expect(content.htmlComponent).toContain('John');
       expect(content.htmlComponent).toContain('button'); // Action button
     });

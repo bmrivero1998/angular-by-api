@@ -1,57 +1,93 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { SimpleChange } from '@angular/core';
 import { DynamicViewerComponent } from './dynamic-viewer.component';
-import { FormBuilder, ReactiveFormsModule, FormControl, Validators, FormGroup } from '@angular/forms';
-import { DomSanitizer } from '@angular/platform-browser';
-import { Renderer2, RendererFactory2, SimpleChange } from '@angular/core';
+import { ReactiveFormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { DynamicInyectCssService } from './services/dynamic-inyect-css.service';
 import { FormDomSynchronizerService } from './services/form-dom-synchronizer.service';
 import { DynamicValidationService } from './services/dynamic-validation.service';
+import { ExternalLibsCleanupService } from './services/external-libs-cleanup.service';
+import { DomInteractionsService } from './services/dom-interactions.service';
 import { DYNAMIC_CONFIG } from './dynamic-config.token';
 
+/**
+ * Nota de arquitectura: DynamicViewerComponent es un orquestador que delega
+ * en servicios especializados (FormDomSynchronizerService para el binding
+ * DOM<->FormGroup, DomInteractionsService para el cableado de listeners
+ * sobre el HTML inyectado). Este spec verifica lo que el COMPONENTE es
+ * responsable de hacer: construir el form, su ciclo de vida y que delega
+ * correctamente en esos servicios — no la lógica interna de cada servicio
+ * (eso vive en el spec de cada uno).
+ *
+ * No se sobreescribe RendererFactory2/Renderer2: usar un Renderer2 falso a
+ * nivel de TestBed rompe la creación del propio fixture (Angular necesita
+ * `renderer.selectRootElement` para montar el componente bajo prueba), así
+ * que se deja el renderer real y se asertan efectos reales sobre el DOM.
+ */
 describe('DynamicViewerComponent', () => {
   let component: DynamicViewerComponent;
   let fixture: ComponentFixture<DynamicViewerComponent>;
 
-  // Spies de servicios
-  let sanitizerSpy: jasmine.SpyObj<DomSanitizer>;
   let cssInjectorSpy: jasmine.SpyObj<DynamicInyectCssService>;
   let synchronizerSpy: jasmine.SpyObj<FormDomSynchronizerService>;
   let validationServiceSpy: jasmine.SpyObj<DynamicValidationService>;
-  let renderer2Spy: jasmine.SpyObj<Renderer2>;
+  let externalLibsCleanupSpy: jasmine.SpyObj<ExternalLibsCleanupService>;
+  let domInteractionsSpy: jasmine.SpyObj<DomInteractionsService>;
+
+  /**
+   * Pasa por el pipeline REAL de sanitización (DOMPurify + DomSanitizer real,
+   * sin mockear) para que el HTML resultante llegue marcado como "trusted" y
+   * el binding `[innerHTML]` del template no lo recorte con el sanitizador
+   * por defecto de Angular (que sí descarta contenido no confiable, p. ej.
+   * <form>). `setInput` dispara ngOnChanges igual que un binding real.
+   */
+  function setInjectedHtml(html: string): void {
+    fixture.componentRef.setInput('htmlContentString', html);
+    fixture.detectChanges();
+  }
 
   beforeEach(async () => {
-    sanitizerSpy = jasmine.createSpyObj('DomSanitizer', ['bypassSecurityTrustHtml']);
     cssInjectorSpy = jasmine.createSpyObj('DynamicInyectCssService', ['injectCss', 'removeCss', 'generateStyleId']);
+    cssInjectorSpy.generateStyleId.and.returnValue('dynamic-style-test');
+
     synchronizerSpy = jasmine.createSpyObj('FormDomSynchronizerService', ['connect', 'disconnect']);
     validationServiceSpy = jasmine.createSpyObj('DynamicValidationService', ['createAsyncValidator']);
+    externalLibsCleanupSpy = jasmine.createSpyObj('ExternalLibsCleanupService', ['cleanupAll']);
 
-    renderer2Spy = jasmine.createSpyObj('Renderer2', [
-      'listen', 'addClass', 'removeClass', 'setAttribute', 'setProperty', 'setStyle', 'createElement', 'appendChild', 'createText'
+    domInteractionsSpy = jasmine.createSpyObj('DomInteractionsService', [
+      'setupFormSubmitPrevention',
+      'setupActionClickListeners',
+      'setupKeyFiltering',
+      'setupAutoFormatting',
+      'setupNavigationLinks',
+      'setupFileInputs',
+      'setupErrorVisualsOnInputs',
+      'syncDomAttributes',
+      'processIdDomBindings',
     ]);
-
-    const rendererFactorySpy = jasmine.createSpyObj('RendererFactory2', ['createRenderer']);
-    rendererFactorySpy.createRenderer.and.returnValue(renderer2Spy);
-
-    sanitizerSpy.bypassSecurityTrustHtml.and.callFake((html) => html);
-    cssInjectorSpy.generateStyleId.and.returnValue('dynamic-style-test');
+    domInteractionsSpy.setupFormSubmitPrevention.and.returnValue([]);
+    domInteractionsSpy.setupActionClickListeners.and.returnValue([]);
+    domInteractionsSpy.setupKeyFiltering.and.returnValue([]);
+    domInteractionsSpy.setupAutoFormatting.and.returnValue([]);
+    domInteractionsSpy.setupNavigationLinks.and.returnValue([]);
+    domInteractionsSpy.setupFileInputs.and.returnValue([]);
+    domInteractionsSpy.setupErrorVisualsOnInputs.and.returnValue(new Subscription());
 
     await TestBed.configureTestingModule({
       imports: [DynamicViewerComponent, ReactiveFormsModule],
       providers: [
-        FormBuilder,
-        { provide: DomSanitizer, useValue: sanitizerSpy },
         { provide: DynamicInyectCssService, useValue: cssInjectorSpy },
         { provide: FormDomSynchronizerService, useValue: synchronizerSpy },
         { provide: DynamicValidationService, useValue: validationServiceSpy },
-        { provide: RendererFactory2, useValue: rendererFactorySpy },
-        { provide: DYNAMIC_CONFIG, useValue: { errorClassName: 'is-invalid', successClassName: 'is-valid' } }
-      ]
+        { provide: ExternalLibsCleanupService, useValue: externalLibsCleanupSpy },
+        { provide: DomInteractionsService, useValue: domInteractionsSpy },
+        { provide: DYNAMIC_CONFIG, useValue: { errorClassName: 'is-invalid', successClassName: 'is-valid' } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DynamicViewerComponent);
     component = fixture.componentInstance;
     component.contentId = 'unit-test-viewer';
-    component.htmlContentString = '<form><input name="test" id="test-input"></form>';
   });
 
   it('debería inicializarse correctamente', () => {
@@ -61,19 +97,19 @@ describe('DynamicViewerComponent', () => {
   describe('Gestión de Formularios y Validadores', () => {
     it('debería construir un FormGroup basado en mappings', () => {
       component.formMappings = [
-        { 
-          controlName: 'email', 
-          domSelector: '#email', 
+        {
+          controlName: 'email',
+          domSelector: '#email',
           validatorConfig: [
-            { type: 'email', value: null, message: 'Email inválido' }, 
-            { type: 'required', value: null, message: 'Requerido' }
-          ] 
+            { type: 'email', value: null, message: 'Email inválido' },
+            { type: 'required', value: null, message: 'Requerido' },
+          ],
         },
-        { 
-          controlName: 'age', 
-          domSelector: '#age', 
-          validatorConfig: [{ type: 'min', value: 18, message: 'Mínimo 18' }] 
-        }
+        {
+          controlName: 'age',
+          domSelector: '#age',
+          validatorConfig: [{ type: 'min', value: 18, message: 'Mínimo 18' }],
+        },
       ];
       fixture.detectChanges();
 
@@ -83,28 +119,24 @@ describe('DynamicViewerComponent', () => {
 
       form.get('email')?.setValue('incorrecto');
       expect(form.get('email')?.invalid).toBeTrue();
-      
+
       form.get('age')?.setValue(10);
       expect(form.get('age')?.invalid).toBeTrue();
     });
 
     it('debería emitir error ante un validador no reconocido', () => {
-      spyOn(component as any, 'emitError');
-      component.formMappings = [{ 
-        controlName: 'x', 
-        domSelector: '#x', 
-        validatorConfig: [{ type: 'unknown', value: 1, message: 'Error' }] 
-      }];
+      spyOn(component.componentError, 'emit');
+      component.formMappings = [
+        { controlName: 'x', domSelector: '#x', validatorConfig: [{ type: 'unknown', value: 1, message: 'Error' }] },
+      ];
       fixture.detectChanges();
-      expect((component as any).emitError).toHaveBeenCalledWith(jasmine.stringMatching(/Validador no reconocido/));
+      expect(component.componentError.emit).toHaveBeenCalledWith(jasmine.stringMatching(/Validador no reconocido/));
     });
 
     it('debería soportar validadores de coincidencia (matchValue)', () => {
-      component.formMappings = [{ 
-        controlName: 'pass', 
-        domSelector: '#p', 
-        validatorConfig: [{ type: 'matchValue', value: 'secret', message: 'No coincide' }] 
-      }];
+      component.formMappings = [
+        { controlName: 'pass', domSelector: '#p', validatorConfig: [{ type: 'matchValue', value: 'secret', message: 'No coincide' }] },
+      ];
       fixture.detectChanges();
       const ctrl = component.dynamicForm.get('pass');
       ctrl?.setValue('wrong');
@@ -112,248 +144,276 @@ describe('DynamicViewerComponent', () => {
       ctrl?.setValue('secret');
       expect(ctrl?.valid).toBeTrue();
     });
+
+    it('debería usar createAsyncValidator del servicio cuando el mapping trae asyncValidator', () => {
+      validationServiceSpy.createAsyncValidator.and.returnValue(() => Promise.resolve(null));
+      component.formMappings = [
+        {
+          controlName: 'username',
+          domSelector: '#u',
+          asyncValidator: { endpoint: '/validate-user', method: 'GET', errorKey: 'userTaken', message: 'Ya existe' },
+        },
+      ];
+      fixture.detectChanges();
+
+      expect(validationServiceSpy.createAsyncValidator).toHaveBeenCalledWith(component.formMappings![0].asyncValidator!);
+    });
   });
 
-  describe('Interacciones con el DOM inyectado', () => {
-    beforeEach(() => {
-      fixture.detectChanges(); // AfterViewInit
+  describe('triggerSubmit', () => {
+    it('emite formSubmitted cuando el formulario es válido', () => {
+      component.formMappings = [{ controlName: 'name', domSelector: '#name' }];
+      fixture.detectChanges();
+      spyOn(component.formSubmitted, 'emit');
+      component.formId = 'my-form';
+      component.dynamicForm.get('name')?.setValue('Ana');
+
+      component.triggerSubmit();
+
+      expect(component.formSubmitted.emit).toHaveBeenCalledWith({ formId: 'my-form', data: { name: 'Ana' } });
     });
 
-    it('debería prevenir el submit estándar de formularios inyectados', () => {
-      const mockForm = document.createElement('form');
-      const container = component.htmlContainerRef.nativeElement;
-      container.appendChild(mockForm);
-      
-      spyOn(component, 'triggerSubmit');
-      
-      // Obtenemos el listener de submit
-      const submitHandler = renderer2Spy.listen.calls.all()
-        .find(c => c.args[0] instanceof HTMLFormElement && c.args[1] === 'submit')?.args[2];
-      
-      const mockEvent = jasmine.createSpyObj('Event', ['preventDefault']);
-      if (submitHandler) submitHandler(mockEvent);
+    it('emite componentError y no formSubmitted cuando el formulario es inválido', () => {
+      component.formMappings = [{ controlName: 'req', domSelector: '#req', validatorConfig: [{ type: 'required', value: null, message: 'x' }] }];
+      fixture.detectChanges();
+      spyOn(component.formSubmitted, 'emit');
+      spyOn(component.componentError, 'emit');
 
-      expect(mockEvent.preventDefault).toHaveBeenCalled();
+      component.triggerSubmit();
+
+      expect(component.formSubmitted.emit).not.toHaveBeenCalled();
+      expect(component.componentError.emit).toHaveBeenCalledWith(jasmine.stringMatching(/inválido/));
+    });
+  });
+
+  describe('API pública de manipulación de formulario', () => {
+    beforeEach(() => {
+      component.formMappings = [
+        { controlName: 'name', domSelector: '#name', defaultValue: 'default-name' },
+        { controlName: 'age', domSelector: '#age' },
+      ];
+      fixture.detectChanges();
+    });
+
+    it('disableFormField / enableFormField', () => {
+      component.disableFormField('name');
+      expect(component.dynamicForm.get('name')?.disabled).toBeTrue();
+      component.enableFormField('name');
+      expect(component.dynamicForm.get('name')?.disabled).toBeFalse();
+    });
+
+    it('getFormValues y setFormValue', () => {
+      component.setFormValue('name', 'Nuevo');
+      expect(component.getFormValues()).toEqual(jasmine.objectContaining({ name: 'Nuevo' }));
+    });
+
+    it('resetForm sin argumentos vuelve a los defaultValue', () => {
+      component.setFormValue('name', 'Otro');
+      component.resetForm();
+      expect(component.dynamicForm.get('name')?.value).toBe('default-name');
+    });
+
+    it('resetForm con argumentos usa esos valores', () => {
+      component.resetForm({ name: 'Forzado' });
+      expect(component.dynamicForm.get('name')?.value).toBe('Forzado');
+    });
+
+    it('getControlStatus refleja el estado real del control', () => {
+      component.dynamicForm.get('name')?.setValue('X');
+      const status = component.getControlStatus('name');
+      expect(status.valid).toBeTrue();
+    });
+
+    it('getControlStatus de un control inexistente regresa un estado inválido seguro', () => {
+      const status = component.getControlStatus('no-existe');
+      expect(status).toEqual({ valid: false, invalid: true, touched: false, dirty: false, errors: null });
+    });
+
+    it('validateControl marca el control como touched', () => {
+      component.validateControl('name');
+      expect(component.dynamicForm.get('name')?.touched).toBeTrue();
+    });
+  });
+
+  describe('Conexión con contenido inyectado', () => {
+    beforeEach(() => {
+      component.formMappings = [{ controlName: 'name', domSelector: '#test-input' }];
+      setInjectedHtml('<form><input id="test-input" name="test"></form>');
+    });
+
+    it('conecta el synchronizer con el form, el container y los mappings', () => {
+      expect(synchronizerSpy.connect).toHaveBeenCalledWith(
+        component.formId,
+        component.dynamicForm,
+        component.htmlContainerRef.nativeElement,
+        component.formMappings!
+      );
+    });
+
+    it('cablea los listeners de interacción a través de DomInteractionsService', () => {
+      expect(domInteractionsSpy.setupFormSubmitPrevention).toHaveBeenCalled();
+      expect(domInteractionsSpy.setupErrorVisualsOnInputs).toHaveBeenCalled();
+      expect(domInteractionsSpy.setupKeyFiltering).toHaveBeenCalled();
+      expect(domInteractionsSpy.setupAutoFormatting).toHaveBeenCalled();
+      expect(domInteractionsSpy.syncDomAttributes).toHaveBeenCalled();
+      expect(domInteractionsSpy.setupFileInputs).toHaveBeenCalled();
+      expect(domInteractionsSpy.setupNavigationLinks).toHaveBeenCalled();
+      expect(domInteractionsSpy.setupActionClickListeners).toHaveBeenCalled();
+    });
+
+    it('delega el submit del formulario inyectado a triggerSubmit', () => {
+      spyOn(component, 'triggerSubmit');
+      const onSubmit = domInteractionsSpy.setupFormSubmitPrevention.calls.mostRecent().args[1];
+
+      onSubmit();
+
       expect(component.triggerSubmit).toHaveBeenCalled();
     });
 
-    it('debería manejar clics en botones con data-dynamic-action', () => {
+    it('reemite como actionClicked lo que reporta DomInteractionsService', () => {
       spyOn(component.actionClicked, 'emit');
-      const mockBtn = document.createElement('button');
-      mockBtn.setAttribute('data-dynamic-action', 'delete-item');
-      
-      const clickHandler = renderer2Spy.listen.calls.all().find(c => c.args[1] === 'click')?.args[2];
-      const mockEvent = { target: mockBtn, closest: () => mockBtn } as any;
+      const onAction = domInteractionsSpy.setupActionClickListeners.calls.mostRecent().args[1];
 
-      if (clickHandler) clickHandler(mockEvent);
+      onAction({ action: 'delete-item' } as any);
 
-      expect(component.actionClicked.emit).toHaveBeenCalledWith(jasmine.objectContaining({
-        action: 'delete-item'
-      }));
+      expect(component.actionClicked.emit).toHaveBeenCalledWith({ action: 'delete-item' } as any);
     });
 
-    it('debería procesar dataBindings hacia el DOM', fakeAsync(() => {
-      const span = document.createElement('span');
-      span.id = 'target-span';
-      component.htmlContainerRef.nativeElement.appendChild(span);
-      
+    it('reemite como fileSelected lo que reporta DomInteractionsService', () => {
+      spyOn(component.fileSelected, 'emit');
+      const onFileSelected = domInteractionsSpy.setupFileInputs.calls.mostRecent().args[1];
+
+      onFileSelected({ controlName: 'avatar', file: new File([''], 'a.png'), formId: 'unit-test-viewer' });
+
+      expect(component.fileSelected.emit).toHaveBeenCalled();
+    });
+
+    it('procesa dataBindings a través de DomInteractionsService al cambiar el input', fakeAsync(() => {
       component.dataBindings = [{ selector: '#target-span', value: 'Hello World' }];
       component.ngOnChanges({ dataBindings: new SimpleChange(null, component.dataBindings, false) });
-      
-      tick(); // setTimeout(0)
-      expect(span.textContent).toBe('Hello World');
-    }));
-  });
 
-  describe('Filtrado de Teclado y Máscaras', () => {
-    it('debería filtrar caracteres no numéricos en keyFilter: int', () => {
-      component.formMappings = [{ controlName: 'phone', domSelector: '#p', keyFilter: 'int' }];
-      (component as any).initializeInjectedContentInteractions();
-
-      const keyHandler = renderer2Spy.listen.calls.all().find(c => c.args[1] === 'keydown')?.args[2];
-      const preventSpy = jasmine.createSpy('preventDefault');
-      
-      // Intentar escribir 'A'
-      if (keyHandler) {
-        keyHandler({ key: 'A', target: { name: 'phone', tagName: 'INPUT' }, preventDefault: preventSpy });
-        expect(preventSpy).toHaveBeenCalled();
-        
-        // Intentar escribir '5'
-        preventSpy.calls.reset();
-        keyHandler({ key: '5', target: { name: 'phone', tagName: 'INPUT' }, preventDefault: preventSpy });
-        expect(preventSpy).not.toHaveBeenCalled();
-      }
-    });
-
-    it('debería manejar keyFilter decimal permitiendo solo un punto', () => {
-      component.formMappings = [{ controlName: 'price', domSelector: '#pr', keyFilter: 'decimal' }];
-      (component as any).initializeInjectedContentInteractions();
-      const keyHandler = renderer2Spy.listen.calls.all().find(c => c.args[1] === 'keydown')?.args[2];
-      const preventSpy = jasmine.createSpy('preventDefault');
-
-      // Segundo punto decimal
-      if (keyHandler) {
-        keyHandler({ key: '.', target: { name: 'price', tagName: 'INPUT', value: '10.5' }, preventDefault: preventSpy });
-        expect(preventSpy).toHaveBeenCalled();
-      }
-    });
-
-    it('debería aplicar máscaras de entrada (inputMask)', fakeAsync(() => {
-      component.formMappings = [{ controlName: 'card', domSelector: '#c', inputMask: '9999-9999' }];
-      (component as any).initializeInjectedContentInteractions();
-      const inputHandler = renderer2Spy.listen.calls.all().find(c => c.args[1] === 'input')?.args[2];
-      
-      const mockInput = document.createElement('input');
-      mockInput.name = 'card';
-      mockInput.value = '12345678';
-      mockInput.selectionStart = 8;
-
-      if (inputHandler) inputHandler({ target: mockInput });
       tick();
 
-      expect(mockInput.value).toBe('1234-5678');
-      expect(component.dynamicForm.get('card')?.value).toBe('12345678');
+      expect(domInteractionsSpy.processIdDomBindings).toHaveBeenCalledWith(
+        component.htmlContainerRef.nativeElement,
+        component.dataBindings,
+        jasmine.any(Function)
+      );
     }));
-  });
-
-  describe('Lógica Condicional (Show/Hide)', () => {
-    it('debería evaluar condiciones y ocultar/deshabilitar controles', () => {
-      component.formMappings = [
-        { controlName: 'extra', domSelector: '#extra', showIf: "status === 'active'" }
-      ];
-      component.dynamicForm = new FormGroup({
-        status: new FormControl('inactive'),
-        extra: new FormControl('')
-      });
-
-      (component as any).applyConditionalLogic();
-
-      // Al ser 'inactive', showIf es false => debe ocultar
-      expect(renderer2Spy.setStyle).toHaveBeenCalledWith(jasmine.any(Object), 'display', 'none');
-      expect(component.dynamicForm.get('extra')?.disabled).toBeTrue();
-    });
-
-    it('debería manejar errores en condiciones mal formadas', () => {
-      spyOn(console, 'warn');
-      const result = (component as any).evaluateCondition("eval(invalid syntax)");
-      expect(result).toBeFalse();
-      expect(console.warn).toHaveBeenCalled();
-    });
   });
 
   describe('Estados de Botones (disableWhen)', () => {
-    it('debería evaluar condiciones de formulario predefinidas', () => {
-      component.buttonConfigs = [{ selector: '#submit', disableWhen: 'formIsInvalid' }];
-      component.formMappings = [{ 
-        controlName: 'req', 
-        domSelector: '#r', 
-        validatorConfig: [{ type: 'required', value: null, message: 'Requerido' }] 
-      }];
-      fixture.detectChanges();
-      
-      const btn = document.createElement('button');
-      (component as any).buttonElements.set('#submit', btn);
+    // Se usa el ButtonStateService REAL (no mockeado): es lógica pura y
+    // verificar el comportamiento real de punta a punta (form -> botón
+    // deshabilitado en el DOM) vale más que verificar una llamada a un spy.
+    function renderWithButton(buttonHtml: string): void {
+      setInjectedHtml(`<form>${buttonHtml}</form>`);
+    }
 
-      component.dynamicForm.get('req')?.setValue(''); // Invalid
+    it('deshabilita el botón cuando el formulario es inválido (formIsInvalid)', () => {
+      component.buttonConfigs = [{ selector: '#submit-btn', disableWhen: 'formIsInvalid' }];
+      component.formMappings = [{ controlName: 'req', domSelector: '#req', validatorConfig: [{ type: 'required', value: null, message: 'Requerido' }] }];
+      // OJO: id="submit" dentro de un <form> es DOM clobbering (colisiona con
+      // form.submit()) y DOMPurify lo descarta silenciosamente por seguridad
+      // — por eso el selector usa "submit-btn", no "submit".
+      renderWithButton('<button id="submit-btn"></button>');
+
+      component.dynamicForm.get('req')?.setValue('');
       (component as any).updateButtonStates();
-      expect(renderer2Spy.setProperty).toHaveBeenCalledWith(btn, 'disabled', true);
+
+      const btn = component.htmlContainerRef.nativeElement.querySelector('#submit-btn') as HTMLButtonElement;
+      expect(btn.disabled).toBeTrue();
     });
 
-    it('debería evaluar condiciones complejas (controlIsInvalid:name)', () => {
+    it('evalúa condiciones de control específicas (controlIsInvalid:campo)', () => {
       component.buttonConfigs = [{ selector: '#btn', disableWhen: 'controlIsInvalid:email' }];
-      component.formMappings = [{ 
-        controlName: 'email', 
-        domSelector: '#e', 
-        validatorConfig: [{ type: 'email', value: null, message: 'Inválido' }] 
-      }];
-      fixture.detectChanges();
-      
-      const btn = document.createElement('button');
-      (component as any).buttonElements.set('#btn', btn);
+      component.formMappings = [{ controlName: 'email', domSelector: '#e', validatorConfig: [{ type: 'email', value: null, message: 'Inválido' }] }];
+      renderWithButton('<button id="btn"></button>');
 
       component.dynamicForm.get('email')?.setValue('not-an-email');
       (component as any).updateButtonStates();
-      expect(renderer2Spy.setProperty).toHaveBeenCalledWith(btn, 'disabled', true);
+
+      const btn = component.htmlContainerRef.nativeElement.querySelector('#btn') as HTMLButtonElement;
+      expect(btn.disabled).toBeTrue();
     });
 
-    it('debería manejar la condición controlsDoNotMatch', () => {
+    it('maneja la condición controlsDoNotMatch', () => {
       component.buttonConfigs = [{ selector: '#save', disableWhen: 'controlsDoNotMatch:p1,p2' }];
       component.formMappings = [
         { controlName: 'p1', domSelector: '#p1' },
-        { controlName: 'p2', domSelector: '#p2' }
+        { controlName: 'p2', domSelector: '#p2' },
       ];
-      fixture.detectChanges();
-      
-      const btn = document.createElement('button');
-      (component as any).buttonElements.set('#save', btn);
+      renderWithButton('<button id="save"></button>');
 
       component.dynamicForm.get('p1')?.setValue('a');
       component.dynamicForm.get('p2')?.setValue('b');
       component.dynamicForm.get('p1')?.markAsTouched();
       component.dynamicForm.get('p2')?.markAsTouched();
-
       (component as any).updateButtonStates();
-      expect(renderer2Spy.setProperty).toHaveBeenCalledWith(btn, 'disabled', true);
+
+      const btn = component.htmlContainerRef.nativeElement.querySelector('#save') as HTMLButtonElement;
+      expect(btn.disabled).toBeTrue();
+    });
+
+    it('emite componentError si el selector del botón no existe en el HTML inyectado', () => {
+      spyOn(component.componentError, 'emit');
+      component.buttonConfigs = [{ selector: '#no-existe' }];
+      renderWithButton('<div></div>');
+
+      expect(component.componentError.emit).toHaveBeenCalledWith(jasmine.stringMatching(/no encontrado/));
     });
   });
 
-  describe('Inputs de Archivo (Boss Final)', () => {
-    let mockFileInput: HTMLInputElement;
-    
+  describe('updateSelectOptions / updateAutocompleteSuggestions', () => {
     beforeEach(() => {
-      mockFileInput = document.createElement('input');
-      mockFileInput.type = 'file';
-      mockFileInput.setAttribute('name', 'avatar');
+      component.formMappings = [{ controlName: 'country', domSelector: '#country' }];
+      setInjectedHtml('<select id="country"></select>');
     });
 
-    it('debería validar maxSize correctamente', () => {
-      component.formMappings = [{ 
-        controlName: 'avatar', 
-        domSelector: '#avatar', 
-        validatorConfig: [{ type: 'maxSize', value: 100, message: 'Muy grande' }] 
-      }];
-      fixture.detectChanges();
+    it('reemplaza las opciones del <select> y sincroniza el control', () => {
+      component.updateSelectOptions('country', [
+        { value: 'ar', label: 'Argentina' },
+        { value: 'mx', label: 'México' },
+      ]);
 
-      const container = component.htmlContainerRef.nativeElement;
-      container.appendChild(mockFileInput);
-      (component as any).setupFileInputs();
-
-      const changeHandler = renderer2Spy.listen.calls.all().find(c => c.args[1] === 'change')?.args[2];
-      
-      // Archivo de 200 bytes
-      const largeFile = new File(['a'.repeat(200)], 'test.txt');
-      const mockEvent = { target: { files: [largeFile] } };
-
-      if (changeHandler) changeHandler(mockEvent);
-
-      expect(component.dynamicForm.get('avatar')?.value).toBeNull();
-      expect(renderer2Spy.addClass).toHaveBeenCalledWith(jasmine.any(Object), 'is-invalid');
+      const select = component.htmlContainerRef.nativeElement.querySelector('#country') as HTMLSelectElement;
+      expect(select.options.length).toBe(2);
+      expect(component.dynamicForm.get('country')?.value).toBe('ar');
     });
 
-    it('debería validar fileType por extensión', () => {
-      component.formMappings = [{ 
-        controlName: 'doc', 
-        domSelector: '#doc', 
-        validatorConfig: [{ type: 'fileType', value: '.pdf', message: 'Tipo inválido' }] 
-      }];
-      fixture.detectChanges();
+    it('conserva el valor actual si sigue existiendo entre las nuevas opciones', () => {
+      component.updateSelectOptions('country', [{ value: 'ar', label: 'Argentina' }]);
+      const select = component.htmlContainerRef.nativeElement.querySelector('#country') as HTMLSelectElement;
+      select.value = 'ar';
 
-      const changeHandler = renderer2Spy.listen.calls.all().find(c => c.args[1] === 'change')?.args[2];
-      const imgFile = new File([''], 'photo.png', { type: 'image/png' });
-      
-      if (changeHandler) changeHandler({ target: { files: [imgFile] } });
-      expect(component.dynamicForm.get('doc')?.value).toBeNull();
+      component.updateSelectOptions('country', [
+        { value: 'mx', label: 'México' },
+        { value: 'ar', label: 'Argentina' },
+      ]);
+
+      expect(select.value).toBe('ar');
     });
   });
 
-  describe('Limpieza', () => {
-    it('debería limpiar suscripciones y observers al destruir', () => {
-      component.isForm = true;
+  describe('Limpieza (ngOnDestroy)', () => {
+    it('desconecta el synchronizer y remueve el CSS al destruir un formulario', () => {
+      // `isForm` no se puede forzar a mano: ngOnInit lo recalcula a partir de
+      // formMappings en cada detectChanges y pisaría la asignación manual.
+      component.formMappings = [{ controlName: 'name', domSelector: '#name' }];
       component.formId = 'test-form';
+      (component as any).styleId = 'some-style-id';
+      fixture.detectChanges();
+
       component.ngOnDestroy();
-      
+
       expect(synchronizerSpy.disconnect).toHaveBeenCalledWith('test-form');
       expect(cssInjectorSpy.removeCss).toHaveBeenCalled();
+    });
+
+    it('limpia las librerías externas del contenedor', () => {
+      fixture.detectChanges();
+      component.ngOnDestroy();
+      expect(externalLibsCleanupSpy.cleanupAll).toHaveBeenCalled();
     });
   });
 });

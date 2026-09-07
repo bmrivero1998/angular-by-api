@@ -26,7 +26,8 @@ describe('FormDomSynchronizerService', () => {
       'listen',
       'setProperty',
       'addClass',
-      'removeClass'
+      'removeClass',
+      'setAttribute'
     ]);
     
     // Configurar listen para que devuelva la función de limpieza (unlisten)
@@ -81,21 +82,24 @@ describe('FormDomSynchronizerService', () => {
     });
 
     it('should setup listeners and initial state when connected', () => {
+      // FormControl arranca con un valor no vacío para poder distinguir el
+      // "estado inicial aplicado" del valor por defecto ('') que ya trae el
+      // <input> nativo (si ambos fueran '', el guard de no-op de
+      // applyInputValue no dispararía ningún setProperty('value', ...)).
+      formGroup = new FormGroup({ testControl: new FormControl('Initial Value') });
+
       const input = document.createElement('input');
       input.id = 'input';
       container.appendChild(input);
-      // Mockear querySelectorAll en el container (aunque container es real, queremos asegurar que encuentre el input creado)
-      // Nota: Como usamos document.createElement, querySelectorAll nativo funciona, pero para tests unitarios a veces es mejor espiar.
-      // Aquí usaremos comportamiento nativo del DOM simulado por JSDOM/Browser.
 
       const mappings: FormFieldMapping[] = [{ controlName: 'testControl', domSelector: '#input' }];
-      
+
       service.connect('form-1', formGroup, container, mappings);
 
       // Verifica que se configuraron listeners
       expect(renderer2Spy.listen).toHaveBeenCalled();
       // Verifica estado inicial
-      expect(renderer2Spy.setProperty).toHaveBeenCalledWith(input, 'value', '');
+      expect(renderer2Spy.setProperty).toHaveBeenCalledWith(input, 'value', 'Initial Value');
     });
   });
 
@@ -172,6 +176,11 @@ describe('FormDomSynchronizerService', () => {
     it('should handle Select elements', () => {
       const select = document.createElement('select');
       select.id = 'sel';
+      // Un <select> nativo ignora asignaciones a .value que no coincidan con
+      // ninguna <option> existente, por eso hace falta declarar la opción.
+      const option = document.createElement('option');
+      option.value = 'Option1';
+      select.appendChild(option);
       container.appendChild(select);
       const mappings: FormFieldMapping[] = [{ controlName: 'name', domSelector: '#sel' }];
       
