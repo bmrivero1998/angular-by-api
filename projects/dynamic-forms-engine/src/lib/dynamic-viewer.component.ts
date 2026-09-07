@@ -47,9 +47,8 @@ import { DynamicValidationService } from './services/dynamic-validation.service'
 import { resolveValidator } from './helpers/validators.helper';
 import { TimerManagerService } from './services/timer-manager.service';
 import { ButtonStateService } from './services/button-state.service';
-import { InputMaskingService } from './services/input-masking.service';
-import { FileUploadService } from './services/file-upload.service';
 import { ExternalLibsCleanupService } from './services/external-libs-cleanup.service';
+import { DomInteractionsService, DomInteractionsContext } from './services/dom-interactions.service';
 import { DEFAULT_ERROR_CLASS, DEFAULT_SUCCESS_CLASS } from './constants/dynamic-viewer.constants';
 
 /**
@@ -118,9 +117,8 @@ export class DynamicViewerComponent<T = any>
     private validationService: DynamicValidationService,
     private timers: TimerManagerService,
     private buttonState: ButtonStateService,
-    private inputMasking: InputMaskingService,
-    private fileUpload: FileUploadService,
-    private externalLibsCleanup: ExternalLibsCleanupService
+    private externalLibsCleanup: ExternalLibsCleanupService,
+    private domInteractions: DomInteractionsService
   ) {}
 
   // --- LIFECYCLE ---
@@ -160,7 +158,11 @@ export class DynamicViewerComponent<T = any>
       this.injectCss();
     }
     if (changes['dataBindings']) {
-      this.timers.safeTimeout(() => this.processIdDomBindings(), 0, (e) => this.emitError(String(e)));
+      this.timers.safeTimeout(
+        () => this.domInteractions.processIdDomBindings(this.htmlContainerRef?.nativeElement, this.dataBindings, (m) => this.emitError(m)),
+        0,
+        (e) => this.emitError(String(e))
+      );
     }
   }
 
@@ -424,6 +426,17 @@ export class DynamicViewerComponent<T = any>
 
   // --- CONEXIÓN CON EL DOM INYECTADO ---
 
+  private buildInteractionsContext(): DomInteractionsContext {
+    return {
+      container: this.htmlContainerRef.nativeElement,
+      dynamicForm: this.dynamicForm,
+      formMappings: this.formMappings,
+      isForm: this.isForm,
+      formId: this.formId,
+      contentId: this.contentId,
+    };
+  }
+
   private initializeInjectedContentInteractions(): void {
     this.cleanupDomInteractions();
 
@@ -431,6 +444,7 @@ export class DynamicViewerComponent<T = any>
       if (!this.htmlContainerRef?.nativeElement?.childElementCount) return false;
 
       this.checkAndLoadExternalDependencies();
+      const ctx = this.buildInteractionsContext();
 
       if (this.isForm && this.formMappings) {
         this.synchronizer.connect(
@@ -439,19 +453,47 @@ export class DynamicViewerComponent<T = any>
           this.htmlContainerRef.nativeElement,
           this.formMappings
         );
-        this.setupInjectedFormSubmitPrevention();
-        this.subscribeAndSetErrorVisualsOnInputs();
-        this.setupInjectedKeyFiltering();
-        this.setupAutoFormatting();
-        this.syncDomAttributes();
-        this.setupFileInputs();
+
+        this.domListeners.push(
+          ...this.domInteractions.setupFormSubmitPrevention(ctx, () => this.triggerSubmit()),
+        );
+
+        const errorClasses = (this.config?.errorClassName || DEFAULT_ERROR_CLASS).split(' ');
+        const successClasses = (this.config?.successClassName || DEFAULT_SUCCESS_CLASS).split(' ');
+        this.subscriptions.add(this.domInteractions.setupErrorVisualsOnInputs(ctx, errorClasses, successClasses));
+
+        this.domListeners.push(...this.domInteractions.setupKeyFiltering(ctx));
+        this.domListeners.push(
+          ...this.domInteractions.setupAutoFormatting(ctx, (fn, ms) =>
+            this.timers.safeTimeout(fn, ms, (e) => this.emitError(String(e))),
+          ),
+        );
+        this.domInteractions.syncDomAttributes(ctx);
+        this.domListeners.push(
+          ...this.domInteractions.setupFileInputs(
+            ctx,
+            (payload) => this.fileSelected.emit(payload),
+            (controlName, error) => this.setControlError(controlName, error),
+          ),
+        );
       }
 
-      this.preventStandardNavigationLinks();
-      this.setupInjectedActionClickListeners();
+      this.domListeners.push(
+        ...this.domInteractions.setupNavigationLinks(
+          ctx,
+          this.scrollOffset,
+          (payload) => this.actionClicked.emit(payload),
+          (message) => this.emitError(message),
+        ),
+      );
+      this.domListeners.push(
+        ...this.domInteractions.setupActionClickListeners(ctx, (payload) => this.actionClicked.emit(payload)),
+      );
       this.cacheButtonElements();
       this.updateButtonStates();
-      this.processIdDomBindings();
+      this.domInteractions.processIdDomBindings(this.htmlContainerRef.nativeElement, this.dataBindings, (m) =>
+        this.emitError(m),
+      );
 
       return true;
     };
@@ -496,214 +538,6 @@ export class DynamicViewerComponent<T = any>
     el.querySelectorAll('[data-dynamic-element]').forEach((e) => e.remove());
   }
 
-  // --- LISTENERS ---
-
-  private setupListener(element: any, event: string, handler: (event: any) => void): void {
-    if (!element) return;
-    this.domListeners.push(this.renderer.listen(element, event, handler));
-  }
-
-  private setupInjectedFormSubmitPrevention(): void {
-    this.htmlContainerRef.nativeElement.querySelectorAll('form').forEach((form) => {
-      this.setupListener(form, 'submit', (event: Event) => {
-        event.preventDefault();
-        this.triggerSubmit();
-      });
-    });
-  }
-
-  private setupInjectedActionClickListeners(): void {
-    this.setupListener(this.htmlContainerRef.nativeElement, 'click', (event: Event) => {
-      const target = event.target as HTMLElement;
-      const button = target.closest('button[data-dynamic-action]') as HTMLButtonElement;
-      if (!button) return;
-
-      const action = button.getAttribute('data-dynamic-action');
-      if (!action) return;
-
-      this.actionClicked.emit({
-        action,
-        sourceId: this.formId || this.contentId,
-        clickedElement: button,
-        originalEvent: event,
-        formData: this.isForm ? this.dynamicForm.getRawValue() : null,
-        formIsValid: this.isForm ? this.dynamicForm.valid : true,
-        formId: this.formId || this.contentId,
-      });
-    });
-  }
-
-  private setupInjectedKeyFiltering(): void {
-    this.setupListener(this.htmlContainerRef.nativeElement, 'keydown', (event: KeyboardEvent) => {
-      const target = event.target as HTMLInputElement;
-      if (!target?.name || !['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
-
-      const mapping = this.formMappings?.find((m) => m.controlName === target.name);
-      if (!mapping?.keyFilter) return;
-
-      if (mapping.keyFilter === 'decimal' && event.key === '.' && target.value.includes('.')) {
-        event.preventDefault();
-        return;
-      }
-
-      if (this.inputMasking.shouldBlockKey(event, mapping.keyFilter)) {
-        event.preventDefault();
-      }
-    });
-  }
-
-  private setupAutoFormatting(): void {
-    this.setupListener(this.htmlContainerRef.nativeElement, 'input', (event: Event) => {
-      const target = event.target as HTMLInputElement;
-      const mapping = this.formMappings?.find(
-        (m) => m.controlName === target.name || m.domSelector === `#${target.id}`
-      );
-      if (!mapping?.inputMask) return;
-
-      const cursorPosition = target.selectionStart;
-      if (cursorPosition === null) return;
-
-      const { formatted, clean } = this.inputMasking.applyMask(target.value, mapping.inputMask);
-
-      const control = this.dynamicForm.get(target.name);
-      if (control && control.value !== clean) {
-        control.setValue(clean, { emitEvent: false });
-      }
-
-      target.value = formatted;
-
-      const newCaret = this.inputMasking.computeCaretPosition(target.value, cursorPosition, formatted);
-      this.timers.safeTimeout(() => target.setSelectionRange(newCaret, newCaret), 0);
-    });
-  }
-
-  /**
-   * Intercepta todos los <a href="..."> del contenido inyectado.
-   *
-   * Convención: si el href empieza con "#" (ej. "#musica"), se interpreta
-   * como link de anclaje IN-PAGE y se hace scroll suave automáticamente al
-   * elemento con ese id — sin necesidad de configurar nada extra, porque
-   * el propio href="#seccion_id" ya es la fuente de verdad del mapeo
-   * link -> sección (misma convención que usa el navegador nativamente).
-   *
-   * Se busca con `document.getElementById` (no solo dentro de este
-   * contenedor) porque el menú y la sección destino suelen vivir en
-   * <app-dynamic-viewer> distintos — son componentes hermanos, no el mismo.
-   *
-   * Cualquier otro href (ruta real, URL externa) se sigue delegando al host
-   * vía `actionClicked` con action: 'navigate', para que decida (router,
-   * window.location, etc.) — eso no cambia.
-   */
-  private preventStandardNavigationLinks(): void {
-    this.htmlContainerRef.nativeElement.querySelectorAll('a').forEach((link) => {
-      if (!link.hasAttribute('href')) return;
-
-      this.setupListener(link, 'click', (event: Event) => {
-        event.preventDefault();
-        const href = link.getAttribute('href');
-        if (!href) return;
-
-        let scrolled = false;
-        if (href === '#') {
-          // Convención estándar de HTML: href="#" (sin id) = volver al top
-          // absoluto de la página. Se resuelve aparte porque no hay ningún
-          // elemento que buscar — ignora `scrollOffset` a propósito, porque
-          // "top" significa top de verdad, no "top menos el navbar".
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          scrolled = true;
-        } else if (href.startsWith('#') && href.length > 1) {
-          scrolled = this.scrollToSection(href.slice(1));
-        }
-
-        this.actionClicked.emit({
-          action: 'navigate',
-          payload: { route: href, scrolled },
-          sourceId: this.contentId,
-          clickedElement: link,
-          originalEvent: event,
-          formData: this.isForm ? this.dynamicForm.getRawValue() : null,
-          formIsValid: this.isForm ? this.dynamicForm.valid : false,
-        });
-      });
-    });
-  }
-
-  /**
-   * Hace scroll suave al elemento con el id dado, respetando `scrollOffset`
-   * (para headers sticky). Regresa `false` si no encontró el elemento, para
-   * que el caller pueda decidir (ej. loguear un warning si el id no existe).
-   */
-  private scrollToSection(sectionId: string): boolean {
-    const target = document.getElementById(sectionId);
-    if (!target) {
-      this.emitError(`No se encontró la sección con id "${sectionId}" para hacer scroll.`);
-      return false;
-    }
-
-    if (this.scrollOffset === 0) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return true;
-    }
-
-    const top = target.getBoundingClientRect().top + window.scrollY - this.scrollOffset;
-    window.scrollTo({ top, behavior: 'smooth' });
-    return true;
-  }
-
-  // --- ARCHIVOS ---
-
-  private setupFileInputs(): void {
-    if (!this.formMappings || !this.htmlContainerRef) return;
-
-    const fileMappings = this.formMappings.filter((m) => {
-      const el = this.htmlContainerRef.nativeElement.querySelector(m.domSelector);
-      return el && (el.getAttribute('type') === 'file' || m.fileUploadConfig);
-    });
-
-    fileMappings.forEach((mapping) => {
-      const element = this.htmlContainerRef.nativeElement.querySelector(
-        mapping.domSelector
-      ) as HTMLInputElement;
-      if (!element) return;
-
-      if (mapping.fileUploadConfig?.accept) {
-        this.renderer.setAttribute(element, 'accept', mapping.fileUploadConfig.accept);
-      }
-      if (mapping.fileUploadConfig?.multiple) {
-        this.renderer.setAttribute(element, 'multiple', 'true');
-      }
-
-      this.setupListener(element, 'change', (event: any) => {
-        const files = event.target.files;
-        if (!files || files.length === 0) {
-          this.dynamicForm.get(mapping.controlName)?.setValue(null);
-          return;
-        }
-
-        const fileArray = Array.from(files) as File[];
-        const fileToEmit = mapping.fileUploadConfig?.multiple ? fileArray : fileArray[0];
-
-        const validationErrors = this.fileUpload.validateFiles(fileArray, mapping.fileUploadConfig);
-        if (validationErrors.length > 0) {
-          this.setControlError(mapping.controlName, { fileValidation: validationErrors });
-          element.value = '';
-          return;
-        }
-
-        this.dynamicForm.get(mapping.controlName)?.setValue(fileToEmit);
-        this.dynamicForm.get(mapping.controlName)?.markAsDirty();
-        this.dynamicForm.get(mapping.controlName)?.markAsTouched();
-
-        this.fileSelected.emit({
-          controlName: mapping.controlName,
-          file: fileToEmit,
-          formId: this.formId || this.contentId,
-          isMultiple: mapping.fileUploadConfig?.multiple || false,
-        });
-      });
-    });
-  }
-
   // --- BOTONES ---
 
   private updateButtonStates(): void {
@@ -742,52 +576,7 @@ export class DynamicViewerComponent<T = any>
     }
   }
 
-  // --- ESTILOS Y CLASES DE VALIDACIÓN VISUAL ---
-
-  private subscribeAndSetErrorVisualsOnInputs(): void {
-    if (!this.formMappings) return;
-
-    const errorClasses = (this.config?.errorClassName || DEFAULT_ERROR_CLASS).split(' ');
-    const successClasses = (this.config?.successClassName || DEFAULT_SUCCESS_CLASS).split(' ');
-
-    this.formMappings.forEach((mapping) => {
-      const control = this.dynamicForm.get(mapping.controlName);
-      const inputElement = this.htmlContainerRef.nativeElement.querySelector(
-        mapping.domSelector
-      ) as HTMLElement;
-      if (!control || !inputElement) return;
-
-      const sub = control.statusChanges.subscribe(() => {
-        const isInvalid = control.invalid && (control.dirty || control.touched);
-        const isValid = control.valid && (control.dirty || control.touched);
-
-        errorClasses.forEach((cls) => this.renderer.removeClass(inputElement, cls));
-        successClasses.forEach((cls) => this.renderer.removeClass(inputElement, cls));
-
-        if (isInvalid) errorClasses.forEach((cls) => this.renderer.addClass(inputElement, cls));
-        else if (isValid) successClasses.forEach((cls) => this.renderer.addClass(inputElement, cls));
-      });
-      this.subscriptions.add(sub);
-    });
-  }
-
-  private syncDomAttributes(): void {
-    if (!this.formMappings || !this.htmlContainerRef) return;
-
-    this.formMappings.forEach((mapping) => {
-      const element = this.htmlContainerRef.nativeElement.querySelector(
-        mapping.domSelector
-      ) as HTMLElement;
-      if (!element) return;
-
-      if (!element.getAttribute('name')) {
-        this.renderer.setAttribute(element, 'name', mapping.controlName);
-      }
-      if (mapping.inputMask) {
-        this.renderer.setAttribute(element, 'autocomplete', 'off');
-      }
-    });
-  }
+  // --- ESTILOS ---
 
   private injectCss(): void {
     if (this.styleId && this.htmlContainerRef) {
@@ -797,20 +586,6 @@ export class DynamicViewerComponent<T = any>
       this.styleId = this.cssInjector.generateStyleId(`viewer-${this.contentId}`);
       this.cssInjector.injectCss(this.cssContentString, this.styleId, this.htmlContainerRef.nativeElement);
     }
-  }
-
-  private processIdDomBindings(): void {
-    if (!this.htmlContainerRef || !this.dataBindings) return;
-
-    this.dataBindings.forEach((binding) => {
-      if (!binding.selector) return;
-      const element = this.htmlContainerRef.nativeElement.querySelector(binding.selector);
-      if (element) {
-        element.textContent = String(binding.value ?? '');
-      } else {
-        this.emitError(`El elemento con idDom "${binding.selector}" para dataBinding no fue encontrado.`);
-      }
-    });
   }
 
   private checkAndLoadExternalDependencies(): void {
