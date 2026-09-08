@@ -86,7 +86,8 @@ describe('DynamicInyectCssService', () => {
       // Mock de un elemento destino con hijos
       const mockTarget = {
         firstChild: { tagName: 'DIV' }, // Simula tener un hijo
-        tagName: 'HOST-ELEMENT'
+        tagName: 'HOST-ELEMENT',
+        querySelector: jasmine.createSpy('querySelector').and.returnValue(null),
       } as any;
 
       service.injectCss('css', 'style-1', mockTarget);
@@ -103,7 +104,8 @@ describe('DynamicInyectCssService', () => {
       // Mock de un elemento vacío
       const mockTarget = {
         firstChild: null,
-        tagName: 'HOST-ELEMENT'
+        tagName: 'HOST-ELEMENT',
+        querySelector: jasmine.createSpy('querySelector').and.returnValue(null),
       } as any;
 
       service.injectCss('css', 'style-1', mockTarget);

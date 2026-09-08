@@ -7,7 +7,7 @@ import {
   ComponentRef, 
   EventEmitter 
 } from '@angular/core';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { ModalFrameComponent } from '../../../../../src/app/components/modal-frame/modal-frame.component';
 import { ModalService } from './modal-service.service';
 
@@ -23,7 +23,17 @@ describe('ModalService', () => {
 
   beforeEach(() => {
     dcsSpy = jasmine.createSpyObj('DynamicContentService', ['getContent']);
-    appRefSpy = jasmine.createSpyObj('ApplicationRef', ['attachView', 'detachView']);
+    // Angular 19 construye ChangeDetectionSchedulerImpl (dependencia interna
+    // de ApplicationRef) al resolver ComponentFactoryResolver en el injector
+    // de test; ese scheduler hace `appRef.afterTick.subscribe(...)` en su
+    // constructor, así que el mock necesita exponer `afterTick` como un
+    // Observable real o falla con "Cannot read properties of undefined
+    // (reading 'subscribe')" antes de que corra cualquier test.
+    appRefSpy = jasmine.createSpyObj(
+      'ApplicationRef',
+      ['attachView', 'detachView'],
+      { afterTick: new Subject<void>().asObservable() }
+    );
     
     // Mock de la instancia del componente
     componentInstanceMock = {

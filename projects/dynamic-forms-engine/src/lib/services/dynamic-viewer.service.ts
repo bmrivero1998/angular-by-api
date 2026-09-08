@@ -300,7 +300,19 @@ export class DynamicViewerService {
           tbodyHtml += '</tr>';
         });
         tbodyHtml += '</tbody>';
-        tableElement.innerHTML = theadHtml + tbodyHtml;
+
+        // El fragmento thead/tbody solo se parsea como tabla real si el nodo
+        // destino YA es un <table>: el algoritmo de parseo de HTML ignora
+        // silenciosamente <thead>/<tr>/<th>/<tbody>/<td> cuando el contexto
+        // de inserción no es "in table" (p. ej. un <div> contenedor), y solo
+        // deja el texto plano de las celdas. Si el selector apunta a otra
+        // cosa (el caso más común: un <div id="miTabla"></div> placeholder),
+        // hay que envolver el fragmento en un <table> propio para que el
+        // navegador sí reconstruya la estructura.
+        tableElement.innerHTML =
+          tableElement.tagName === 'TABLE'
+            ? theadHtml + tbodyHtml
+            : `<table>${theadHtml}${tbodyHtml}</table>`;
       }
     });
     return { ...content, htmlComponent: container.innerHTML };

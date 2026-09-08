@@ -1,42 +1,25 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalFrameComponent } from './modal-frame.component';
-import { Component, Input } from '@angular/core';
 import { FormControl, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { ApiDrivenContent } from '../../../../projects/dynamic-forms-engine/src/lib/interfaces/DynamicContent.interface';
-import { DynamicViewerComponent } from '../../../../projects/dynamic-forms-engine/src/lib/dynamic-viewer.component';
 
-// 1. MOCK DEL COMPONENTE HIJO
-// Se usa un mock para evitar cargar todas las dependencias del DynamicViewer real en este test
-@Component({
-  selector: 'app-dynamic-viewer',
-  standalone: true,
-  template: '<div>Mock Viewer</div>'
-})
-class MockDynamicViewerComponent {
-  @Input() contentId: any;
-  @Input() htmlContentString: any;
-  @Input() cssContentString: any;
-  @Input() formMappings: any;
-  @Input() parentForm: any;
-  @Input() dataBindings: any;
-  @Input() buttonConfigs: any;
-  @Input() formInitialData: any;
-}
-
+/**
+ * DynamicViewerComponent y sus colaboradores son todos `providedIn: 'root'`
+ * (sin side effects riesgosos en el constructor), así que no hace falta
+ * mockearlo ni usar `overrideComponent` para "aligerar" el test: Angular lo
+ * resuelve solo a partir del `imports` standalone de ModalFrameComponent.
+ * El intento anterior de mockearlo vía overrideComponent rompía la
+ * compilación del propio TestBed ("ModalFrameComponent class doesn't have
+ * @Component decorator or is missing metadata"), así que se removió.
+ */
 describe('ModalFrameComponent', () => {
   let component: ModalFrameComponent;
   let fixture: ComponentFixture<ModalFrameComponent>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [ModalFrameComponent, MockDynamicViewerComponent, ReactiveFormsModule] 
-    })
-    // Reemplazamos el DynamicViewerComponent real por el Mock dentro del componente standalone
-    .overrideComponent(ModalFrameComponent, {
-      remove: { imports: [DynamicViewerComponent] },
-      add: { imports: [MockDynamicViewerComponent] }
-    })
-    .compileComponents();
+      imports: [ModalFrameComponent, ReactiveFormsModule],
+    }).compileComponents();
 
     fixture = TestBed.createComponent(ModalFrameComponent);
     component = fixture.componentInstance;

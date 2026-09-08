@@ -7,7 +7,7 @@ import {
   HttpErrorResponse,
   HttpResponse,
 } from '@angular/common/http';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { DynamicApiResponse } from '../interfaces/DynamicContent.interface';
 
@@ -80,48 +80,132 @@ body { background-color: #f8f9fa; }
     ],
   };
 
+  private readonly accessDeniedMockResponse: DynamicApiResponse = {
+    ok: true,
+    doc: [
+      {
+        renderType: 'dynamic',
+        id_DocumentHTMLCSS: 'access-denied-page',
+        htmlComponent: `
+          <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100">
+            <div class="error-page-card">
+              <i class="bi bi-shield-lock-fill text-danger"></i>
+              <h1 class="display-1 fw-bold">403</h1>
+              <h2 class="display-5 mb-4">Acceso No Autorizado</h2>
+              <p class="lead mb-4">No cuentas con los permisos necesarios para ver este contenido, o tu sesión ha expirado.</p>
+              <a href="/" class="btn btn-primary btn-lg"><i class="bi bi-box-arrow-in-right me-2"></i>Volver a Iniciar Sesión</a>
+            </div>
+          </div>`,
+        cssComponent: `/* ... CSS para Acceso Denegado ... */
+body { background-color: #f8f9fa; }
+.error-page-card { max-width: 600px; margin: 2rem auto; text-align: center; background-color: #ffffff; border-radius: 0.75rem; box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.1); padding: 3rem; }
+.error-page-card .bi { font-size: 8rem; margin-bottom: 1.5rem; }
+.error-page-card h1, .error-page-card h2 { color: #dc3545; }
+.error-page-card p.lead { color: #6c757d; font-size: 1.25rem; }
+.min-vh-100 { min-height: 100vh; }
+.d-flex.flex-column.align-items-center.justify-content-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+`,
+        formId: '',
+        formMappings: [],
+        buttonConfigs: [],
+      },
+    ],
+  };
+
+  /**
+   * Página de error genérica: se usa para cualquier código de error que no
+   * tenga un mock más específico (400, 409, 422, timeouts, etc.), en vez de
+   * dejar que el error se propague sin control a la UI.
+   */
+  private readonly genericErrorMockResponse: DynamicApiResponse = {
+    ok: true,
+    doc: [
+      {
+        renderType: 'dynamic',
+        id_DocumentHTMLCSS: 'generic-error-page',
+        htmlComponent: `
+          <div class="container d-flex flex-column align-items-center justify-content-center min-vh-100">
+            <div class="error-page-card">
+              <i class="bi bi-exclamation-octagon-fill text-danger"></i>
+              <h1 class="display-3 fw-bold">¡Ups! Algo salió mal</h1>
+              <h2 class="display-6 mb-4">Ocurrió un error inesperado.</h2>
+              <p class="lead mb-4">No pudimos completar tu solicitud. Intenta nuevamente en unos minutos.</p>
+              <button type="button" onclick="location.reload();" class="btn btn-danger btn-lg"><i class="bi bi-arrow-clockwise me-2"></i>Reintentar</button>
+            </div>
+          </div>`,
+        cssComponent: `/* ... CSS para Error Genérico ... */
+body { background-color: #f8f9fa; }
+.error-page-card { max-width: 600px; margin: 2rem auto; text-align: center; background-color: #ffffff; border-radius: 0.75rem; box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.1); padding: 3rem; }
+.error-page-card .bi { font-size: 8rem; margin-bottom: 1.5rem; }
+.error-page-card h1, .error-page-card h2 { color: #dc3545; }
+.error-page-card p.lead { color: #6c757d; font-size: 1.25rem; }
+.min-vh-100 { min-height: 100vh; }
+.d-flex.flex-column.align-items-center.justify-content-center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+`,
+        formId: '',
+        formMappings: [],
+        buttonConfigs: [],
+      },
+    ],
+  };
+
   intercept(
     request: HttpRequest<unknown>,
     next: HttpHandler
   ): Observable<HttpEvent<DynamicApiResponse>> {
     // El tipo de retorno es correcto
     return next.handle(request).pipe(
-      catchError((error: HttpErrorResponse) => {
+      catchError((error: unknown) => {
+        if (!(error instanceof HttpErrorResponse)) {
+          console.error('Interceptor: Error no HTTP capturado.', error);
+          return this.toMockResponse(request, this.genericErrorMockResponse);
+        }
+
         if (error.status === 404) {
           console.warn(
             'Interceptor: Se detectó un error 404. Devolviendo mock de Página No Encontrada.'
           );
-          return of(
-            new HttpResponse<DynamicApiResponse>({
-              body: this.notFoundMockResponse,
-              status: 200,
-              statusText: 'OK',
-              url: request.url,
-              headers: request.headers,
-            })
+          return this.toMockResponse(request, this.notFoundMockResponse);
+        }
+
+        if (error.status === 401 || error.status === 403) {
+          console.warn(
+            `Interceptor: Se detectó un error ${error.status} (no autorizado). Devolviendo mock de Acceso Denegado.`,
+            error
           );
-        } else if (
-          error.status >= 500 ||
-          error.status === 0 ||
-          error.status === 400 ||
-          error.status === 403
-        ) {
+          return this.toMockResponse(request, this.accessDeniedMockResponse);
+        }
+
+        if (error.status >= 500 || error.status === 0) {
           console.error(
             'Interceptor: Se detectó un error de servidor/red. Devolviendo mock de Mantenimiento.',
             error
           );
-          return of(
-            new HttpResponse<DynamicApiResponse>({
-              body: this.maintenanceMockResponse,
-              status: 200,
-              statusText: 'OK',
-              url: request.url,
-              headers: request.headers,
-            })
-          );
+          return this.toMockResponse(request, this.maintenanceMockResponse);
         }
 
-        return throwError(() => error);
+        // Cualquier otro código (400, 409, 422, etc.): se muestra un error
+        // genérico en vez de dejar que el fallo se propague sin manejar.
+        console.error(
+          `Interceptor: Error HTTP ${error.status} sin mock específico. Devolviendo mock de Error Genérico.`,
+          error
+        );
+        return this.toMockResponse(request, this.genericErrorMockResponse);
+      })
+    );
+  }
+
+  private toMockResponse(
+    request: HttpRequest<unknown>,
+    body: DynamicApiResponse
+  ): Observable<HttpEvent<DynamicApiResponse>> {
+    return of(
+      new HttpResponse<DynamicApiResponse>({
+        body,
+        status: 200,
+        statusText: 'OK',
+        url: request.url,
+        headers: request.headers,
       })
     );
   }
