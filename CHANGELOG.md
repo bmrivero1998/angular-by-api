@@ -5,6 +5,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Añadido (errores de carga)
+
+- **Página de error** cuando falla la primera carga por `api-url`: 404, sin acceso (401/403), servicio no disponible (sin red, 408, 429, 5xx) y error genérico. Los dos últimos ofrecen "Reintentar", que vuelve a pedir el contenido. Usa estilos propios, sin depender de Bootstrap ni de fuentes de iconos. Ver `docs/errors.md`.
+- Atributo `show-error-page` (por defecto `true`): con `"false"` solo se emite `errorOccurred`, para que el host muestre su propia página.
+- `errorOccurred` incluye el código HTTP: `Error cargando configuración dinámica (HTTP 404)`.
+
+### Cambiado (errores de carga)
+
+- Un fallo al **volver a cargar** (`refresh()`) con la pantalla ya funcionando no la reemplaza por una página de error: solo se informa.
+- Se elimina `MockErrorHandlerInterceptor`. Nunca estuvo registrado, y de haberlo estado habría convertido **cualquier** error HTTP de la aplicación en una respuesta `200` falsa, también el de un validador asíncrono (un `500` en `/check-username` se habría leído como "usuario ya tomado"). Los fallos de carga se resuelven ahora de forma explícita, solo para el contenido de la pantalla.
+
+### Corregido (acciones)
+
+- Una acción con "modal" en el nombre (`open_modal`, `show_modal_help`, `modal_confirm`) **ya no se confunde con cerrar un modal ni se traga**: antes cerraba el modal y el host nunca la recibía, lo que hacía imposible abrir un modal desde una acción.
+- Las acciones integradas se reconocen por **palabras completas** (`close_modal`, `close-modal` y `closeModal` son lo mismo) y no por texto suelto: `reset_password` ya no vacía el formulario, `resubmit_later` ya no envía nada y `disclose` ya no cierra un modal. Aplica al widget y al marco del modal.
+- Las acciones de cerrar y de vaciar el formulario ahora **también se reportan al host** como `actionTriggered`, además de ejecutarse. `submit` sigue sin reportarse como acción (llega `formSubmit`). Ver `docs/events.md`.
+- Los atributos HTML del elemento llegaban como texto: `show-back-to-top="false"` seguía mostrando el botón (el texto "false" cuenta como verdadero) y `debug="false"` activaba el modo debug. Ahora los booleanos y los números se convierten (`scroll-offset`, `grid-gap`, `back-to-top-threshold`, `form-state-debounce`).
+
+### Documentación
+
+- Se documenta que los listeners de los eventos de la primera carga deben registrarse antes del `<script>` del widget, para no perderlos si el servidor responde muy rápido.
+
 ### Cambiado (carga y actualización de contenido)
 
 - **`static` y `dynamic` ahora significan cómo se actualiza una sección**, no dónde se pinta. Al recibir contenido, el widget lo compara por `id_DocumentHTMLCSS` contra lo que tiene en memoria: si cambia una sección `static` se recarga toda la pantalla; si cambian solo secciones `dynamic` se actualiza únicamente cada una, y las demás conservan su componente y lo que el usuario escribió; si no cambia nada, no se toca nada. Ver `docs/updating-content.md`.

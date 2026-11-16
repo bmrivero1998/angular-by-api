@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { firstValueFrom } from 'rxjs';
 import { ApiDrivenContent } from '@ux-driven-viewer/engine';
 import { ContentChange } from '../content/dynamic-viewer.service';
+import { ModalService } from '../modal/modal.service';
 import { UXDrivenViewerWidgetComponent } from './ux-driven-viewer.component';
 
 /**
@@ -332,6 +333,157 @@ describe('UXDrivenViewerWidgetComponent (actualización de contenido, integraci�
       expect(result.mode).toBe('patched');
       expect(text('novedades')).toBe('Desde el host');
       expect(alive('datos')).toBeTrue();
+    });
+  });
+
+  describe('errores de carga (API)', () => {
+    let http: HttpTestingController;
+    const failure = (status: number) => ({ status, statusText: 'Error' });
+
+    function createWithApi(showErrorPage?: boolean): void {
+      fixture = TestBed.createComponent(UXDrivenViewerWidgetComponent);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('apiUrl', '/api/pantalla');
+      if (showErrorPage !== undefined) fixture.componentRef.setInput('showErrorPage', showErrorPage);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+      http = TestBed.inject(HttpTestingController);
+      spyOn(console, 'error');
+    }
+
+    const errorPage = () => host.querySelector('.ux-error') as HTMLElement | null;
+
+    it('un 404 en la primera carga pinta la página de error, sin spinner y con ready', () => {
+      createWithApi();
+      const errors: string[] = [];
+      const updates: ContentChange[] = [];
+      let ready = 0;
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      component.contentUpdated.subscribe((c) => updates.push(c));
+      component.ready.subscribe(() => ready++);
+
+      http.expectOne('/api/pantalla').flush(null, failure(404));
+      fixture.detectChanges();
+
+      expect(errorPage()?.textContent).toContain('404');
+      expect(errorPage()?.textContent).toContain('No encontramos este contenido');
+      expect(host.querySelector('.ux-error__retry')).toBeNull(); // reintentar no ayuda con un 404
+      expect(component.isLoading).toBeFalse();
+      expect(errors).toEqual(['Error cargando configuración dinámica (HTTP 404)']);
+      expect(updates).toEqual([{ mode: 'initial', changedIds: ['ux-error-page'], issues: [] }]);
+      expect(ready).toBe(1);
+    });
+
+    it('un 503 ofrece Reintentar; al pulsarlo pide el contenido otra vez y lo pinta en lugar del error', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(null, failure(503));
+      fixture.detectChanges();
+      expect(errorPage()).not.toBeNull();
+
+      (host.querySelector('.ux-error__retry') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull(); // se quita mientras reintenta
+      expect(host.querySelector('[role="status"]')).not.toBeNull(); // spinner
+
+      http.expectOne('/api/pantalla').flush(schema());
+      fixture.detectChanges();
+
+      expect(sectionIds()).toEqual(['nav', 'datos', 'novedades', 'pie']);
+      expect(errorPage()).toBeNull();
+    });
+
+    it('si el reintento vuelve a fallar, la página de error reaparece', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      (host.querySelector('.ux-error__retry') as HTMLButtonElement).click();
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).not.toBeNull();
+      expect(component.isLoading).toBeFalse();
+    });
+
+    it('un 403 muestra acceso no autorizado y la sección de error se aísla como cualquier otra', () => {
+      createWithApi();
+
+      http.expectOne('/api/pantalla').flush(null, failure(403));
+      fixture.detectChanges();
+
+      expect(errorPage()?.textContent).toContain('Acceso no autorizado');
+      expect(host.querySelector('.dynamic-ux-error-page')).not.toBeNull();
+    });
+
+    it('si ya hay contenido en pantalla, un fallo al refrescar NO lo reemplaza por la página de error', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(schema());
+      fixture.detectChanges();
+      type('#nombre', 'Ana');
+      const errors: string[] = [];
+      component.errorOccurred.subscribe((e) => errors.push(e));
+
+      component.refresh();
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull();
+      expect(sectionIds()).toEqual(['nav', 'datos', 'novedades', 'pie']);
+      expect((host.querySelector('#nombre') as HTMLInputElement).value).toBe('Ana');
+      expect(errors).toEqual(['Error cargando configuración dinámica (HTTP 500)']);
+    });
+
+    it('con show-error-page desactivado no se pinta nada y solo se informa', () => {
+      createWithApi(false);
+      const errors: string[] = [];
+      component.errorOccurred.subscribe((e) => errors.push(e));
+
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull();
+      expect(sectionIds()).toEqual([]);
+      expect(errors.length).toBe(1);
+    });
+
+    it('un error que NO es de la carga de contenido no se convierte en página de error', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(schema());
+      fixture.detectChanges();
+
+      // Otra petición HTTP de la aplicación que falla (p. ej. un validador asíncrono).
+      TestBed.inject(HttpClient).get('/otra-api').subscribe({ error: () => {} });
+      http.expectOne('/otra-api').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull();
+      expect(sectionIds()).toEqual(['nav', 'datos', 'novedades', 'pie']);
+    });
+  });
+
+  describe('acciones con "modal" en el nombre (DOM real)', () => {
+    const button = (action: string) =>
+      section('acc', 'static', `<button id="b" type="button" data-dynamic-action="${action}">x</button>`);
+
+    function clickAction(action: string): string[] {
+      create([button(action)]);
+      const received: string[] = [];
+      component.actionTriggered.subscribe((p) => received.push(p.action));
+      (host.querySelector('#b') as HTMLButtonElement).click();
+      return received;
+    }
+
+    it('open_modal llega al host (antes se tragaba y solo cerraba el modal)', () => {
+      expect(clickAction('open_modal')).toEqual(['open_modal']);
+    });
+
+    it('close_modal llega al host además de cerrar el modal', () => {
+      const modal = TestBed.inject(ModalService);
+      spyOn(modal, 'close');
+
+      expect(clickAction('close_modal')).toEqual(['close_modal']);
+      expect(modal.close).toHaveBeenCalledTimes(1);
     });
   });
 });

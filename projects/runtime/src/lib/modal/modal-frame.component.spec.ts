@@ -116,6 +116,47 @@ describe('ModalFrameComponent', () => {
       expect(component.onClose).toHaveBeenCalled();
     });
 
+    // Las acciones se comparan por palabras completas, no por texto suelto.
+    it('no cierra con acciones que solo contienen "close" o "cancel" dentro de otra palabra', () => {
+      spyOn(component, 'onClose');
+      spyOn(component.triggerAction, 'emit');
+
+      ['disclose', 'closet', 'cancellation'].forEach((action) => component.onActionClick({ action }));
+
+      expect(component.onClose).not.toHaveBeenCalled();
+      expect(component.triggerAction.emit).toHaveBeenCalledTimes(3);
+    });
+
+    it('reconoce close y cancel escritos de distintas formas', () => {
+      spyOn(component, 'onClose');
+
+      ['close', 'closeModal', 'close_modal', 'CANCEL', 'cancel-order'].forEach((action) =>
+        component.onActionClick({ action }),
+      );
+
+      expect(component.onClose).toHaveBeenCalledTimes(5);
+    });
+
+    it('una acción de abrir otro modal llega al host y no cierra el actual', () => {
+      spyOn(component, 'onClose');
+      spyOn(component.triggerAction, 'emit');
+
+      component.onActionClick({ action: 'open_modal_help' });
+
+      expect(component.onClose).not.toHaveBeenCalled();
+      expect(component.triggerAction.emit).toHaveBeenCalled();
+    });
+
+    it('una palabra que solo contiene submit o save (resubmit, autosave) no exige validar', () => {
+      spyOn(component.triggerAction, 'emit');
+      component.modalForm = new FormGroup({ req: new FormControl('', Validators.required) }) as any;
+
+      component.onActionClick({ action: 'autosave' });
+      component.onActionClick({ action: 'resubmit' });
+
+      expect(component.triggerAction.emit).toHaveBeenCalledTimes(2);
+    });
+
     // CASO B: Submit Inválido
     it('should block emission and mark touched if form is invalid on submit/save', () => {
       spyOn(component.triggerAction, 'emit');

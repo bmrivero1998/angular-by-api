@@ -45,6 +45,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | [Primeros pasos](docs/getting-started.md) | Instalación en un host, atributos del elemento, requisitos. |
 | [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación. |
 | [Actualizar el contenido](docs/updating-content.md) | `static` vs `dynamic`, `updateSections`, `refresh`, `contentUpdated`. |
+| [Errores de carga](docs/errors.md) | Páginas de error, "Reintentar", `show-error-page`, `errorOccurred`. |
 | [Validadores y controles](docs/validators.md) | `formMappings`, validadores, `keyFilter`, máscaras, archivos. |
 | [Lógica condicional](docs/conditional-logic.md) | `showIf` / `hideIf`. |
 | [Eventos](docs/events.md) | Qué emite el widget y con qué datos. |
@@ -86,7 +87,7 @@ Más detalle en la [guía de contribución](CONTRIBUTING.md).
 
 ## Estado del proyecto
 
-En estabilización. La estructura y el formato del JSON están definidos; quedan correcciones pendientes en las páginas de error de la carga de contenido y en las acciones que abren o cierran modales.
+En estabilización. La estructura y el formato del JSON están definidos; los problemas de formularios, lógica condicional, CSS, carga de contenido y acciones detectados en la revisión inicial están corregidos. Queda código sin terminar o sin uso: el stepper, la navegación y el registro de componentes (en `projects/engine/src/lib/experimental`), el autocompletado dinámico, el loader y los toasts del runtime, y `HtmlSanitizerInterceptor`, que no se registra por defecto.
 
 ## Contribuir
 

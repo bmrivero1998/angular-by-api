@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ContentChange, DynamicViewerService } from '../content/dynamic-viewer.service';
 import { ModalService } from '../modal/modal.service';
@@ -49,6 +49,10 @@ describe('UXDrivenViewerWidgetComponent', () => {
     spyOn(dws, 'setLocalContent').and.returnValue(UNCHANGED);
     spyOn(dws, 'updateSections').and.returnValue(UNCHANGED);
     spyOn(dws, 'getContentValue').and.returnValue([]);
+    spyOn(dws, 'hasContent').and.returnValue(false);
+    spyOn(dws, 'isShowingErrorPage').and.returnValue(false);
+    spyOn(dws, 'clearContent');
+    spyOn(dws, 'showErrorPage').and.returnValue(change('initial', ['ux-error-page']));
     dwsSpy = dws as unknown as jasmine.SpyObj<DynamicViewerService>;
   });
 
@@ -234,7 +238,7 @@ describe('UXDrivenViewerWidgetComponent', () => {
       });
     });
 
-    it('should close modal on "close" or "modal" action', () => {
+    it('should close modal on "close" or "cancel" actions', () => {
       component.handleViewerActionClick({ action: 'close', sourceId: '1' });
       expect(modalServiceSpy.close).toHaveBeenCalled();
 
@@ -444,7 +448,7 @@ describe('UXDrivenViewerWidgetComponent', () => {
     });
 
     it('al volver a cargar con contenido en pantalla NO muestra el spinner', () => {
-      dwsSpy.getContentValue.and.returnValue([{ id_DocumentHTMLCSS: 'a', renderType: 'static', htmlComponent: '' }]);
+      dwsSpy.hasContent.and.returnValue(true);
       const response$ = new Subject<ContentChange>();
       dwsSpy.loadInitialContent.and.returnValue(response$);
       component.apiUrl = 'api';
@@ -471,7 +475,7 @@ describe('UXDrivenViewerWidgetComponent', () => {
 
     it('si falla al volver a cargar no emite ready y deja el contenido como estaba', () => {
       spyOn(console, 'error');
-      dwsSpy.getContentValue.and.returnValue([{ id_DocumentHTMLCSS: 'a', renderType: 'static', htmlComponent: '' }]);
+      dwsSpy.hasContent.and.returnValue(true);
       dwsSpy.loadInitialContent.and.returnValue(throwError(() => new Error('boom')));
       component.apiUrl = 'api';
 
@@ -510,6 +514,206 @@ describe('UXDrivenViewerWidgetComponent', () => {
       dwsSpy.loadInitialContent.and.returnValue(of(UNCHANGED));
       element.refresh();
       expect(dwsSpy.loadInitialContent).toHaveBeenCalledWith('api');
+    });
+  });
+
+  // --- ERRORES DE CARGA: página de error y reintento ---
+  describe('errores de carga', () => {
+    let errors: string[];
+    let updated: ContentChange[];
+    let readyCount: number;
+
+    beforeEach(() => {
+      spyOn(console, 'error');
+      errors = [];
+      updated = [];
+      readyCount = 0;
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      component.contentUpdated.subscribe((c) => updated.push(c));
+      component.ready.subscribe(() => readyCount++);
+      component.apiUrl = 'api';
+    });
+
+    const http = (status: number) => new HttpErrorResponse({ status });
+
+    it('si falla la primera carga pinta la página de error, informa el código y emite ready', () => {
+      dwsSpy.loadInitialContent.and.returnValue(throwError(() => http(404)));
+
+      component.refresh();
+
+      expect(dwsSpy.showErrorPage).toHaveBeenCalledWith(jasmine.any(HttpErrorResponse));
+      expect(errors).toEqual(['Error cargando configuración dinámica (HTTP 404)']);
+      expect(updated).toEqual([change('initial', ['ux-error-page'])]);
+      expect(readyCount).toBe(1);
+      expect(component.isLoading).toBeFalse();
+    });
+
+    it('un error sin respuesta (sin red) se informa sin código', () => {
+      dwsSpy.loadInitialContent.and.returnValue(throwError(() => http(0)));
+
+      component.refresh();
+
+      expect(errors).toEqual(['Error cargando configuración dinámica']);
+    });
+
+    it('con show-error-page desactivado solo se informa; ready se emite igual por compatibilidad', () => {
+      component.showErrorPage = false;
+      dwsSpy.loadInitialContent.and.returnValue(throwError(() => http(500)));
+
+      component.refresh();
+
+      expect(dwsSpy.showErrorPage).not.toHaveBeenCalled();
+      expect(errors.length).toBe(1);
+      expect(updated).toEqual([]);
+      expect(readyCount).toBe(1);
+    });
+
+    it('si ya hay contenido, un fallo al volver a cargar NO pinta la página de error', () => {
+      dwsSpy.hasContent.and.returnValue(true);
+      dwsSpy.loadInitialContent.and.returnValue(throwError(() => http(503)));
+
+      component.refresh();
+
+      expect(dwsSpy.showErrorPage).not.toHaveBeenCalled();
+      expect(errors.length).toBe(1);
+      expect(readyCount).toBe(0);
+    });
+
+    it('al reintentar desde la página de error la quita y muestra el spinner', () => {
+      dwsSpy.isShowingErrorPage.and.returnValue(true);
+      const response$ = new Subject<ContentChange>();
+      dwsSpy.loadInitialContent.and.returnValue(response$);
+
+      component.refresh();
+
+      expect(dwsSpy.clearContent).toHaveBeenCalled();
+      expect(component.isLoading).toBeTrue();
+    });
+
+    it('la acción retry_load vuelve a pedir el contenido y no se reporta al host', () => {
+      dwsSpy.loadInitialContent.and.returnValue(of(UNCHANGED));
+      const actions: string[] = [];
+      component.actionTriggered.subscribe((p) => actions.push(p.action));
+
+      component.handleViewerActionClick({ action: 'retry_load', sourceId: 'ux-error-page' });
+
+      expect(dwsSpy.loadInitialContent).toHaveBeenCalledWith('api');
+      expect(actions).toEqual([]);
+    });
+  });
+
+  // --- ACCIONES INTEGRADAS: se reconocen por palabras, no por texto suelto ---
+  describe('acciones integradas', () => {
+    let actions: string[];
+
+    beforeEach(() => {
+      actions = [];
+      component.actionTriggered.subscribe((p) => actions.push(p.action));
+      component.formGroup = new FormGroup({ name: new FormControl('Ana', Validators.required) });
+    });
+
+    const click = (action: string) => component.handleViewerActionClick({ action, sourceId: 's' });
+
+    it('open_modal ya no cierra el modal y SÍ llega al host (antes se tragaba)', () => {
+      click('open_modal');
+
+      expect(modalServiceSpy.close).not.toHaveBeenCalled();
+      expect(actions).toEqual(['open_modal']);
+    });
+
+    ['show_modal_help', 'modal_confirm', 'modal'].forEach((name) =>
+      it(`"${name}" tampoco cierra nada y llega al host`, () => {
+        click(name);
+
+        expect(modalServiceSpy.close).not.toHaveBeenCalled();
+        expect(actions).toEqual([name]);
+      }),
+    );
+
+    ['close', 'close_modal', 'closeModal', 'modal-cancel', 'cancel', 'dismiss'].forEach((name) =>
+      it(`"${name}" cierra el modal y además se reporta al host`, () => {
+        click(name);
+
+        expect(modalServiceSpy.close).toHaveBeenCalledTimes(1);
+        expect(actions).toEqual([name]);
+      }),
+    );
+
+    it('reset_password NO vacía el formulario y llega al host', () => {
+      click('reset_password');
+
+      expect(component.formGroup.value).toEqual({ name: 'Ana' });
+      expect(actions).toEqual(['reset_password']);
+    });
+
+    ['reset', 'reset_form', 'resetForm'].forEach((name) =>
+      it(`"${name}" vacía el formulario y se reporta al host`, () => {
+        click(name);
+
+        expect(component.formGroup.value).toEqual({ name: null });
+        expect(actions).toEqual([name]);
+      }),
+    );
+
+    it('submit_order envía el formulario y no se reporta como acción (llega formSubmit)', () => {
+      const submitted: unknown[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+
+      click('submit_order');
+
+      expect(submitted).toEqual([{ name: 'Ana' }]);
+      expect(actions).toEqual([]);
+    });
+
+    it('una palabra que solo contiene submit (resubmit) no envía nada', () => {
+      const submitted: unknown[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+
+      click('resubmit_later');
+
+      expect(submitted).toEqual([]);
+      expect(actions).toEqual(['resubmit_later']);
+    });
+  });
+
+  // --- ATRIBUTOS HTML: llegan como texto ---
+  describe('inputs que llegan como atributos HTML (texto)', () => {
+    const set = (name: string, value: unknown) => {
+      fixture.componentRef.setInput(name, value);
+      return component as unknown as Record<string, unknown>;
+    };
+
+    it('show-back-to-top="false" desactiva el botón (antes el texto "false" contaba como verdadero)', () => {
+      expect(set('showBackToTop', 'false')['showBackToTop']).toBeFalse();
+    });
+
+    it('un atributo booleano presente sin valor o con "true" es verdadero', () => {
+      expect(set('showBackToTop', '')['showBackToTop']).toBeTrue();
+      expect(set('debug', 'true')['debug']).toBeTrue();
+      expect(set('debug', 'false')['debug']).toBeFalse();
+    });
+
+    it('show-error-page="false" desactiva la página de error', () => {
+      expect(set('showErrorPage', 'false')['showErrorPage']).toBeFalse();
+      expect(set('showErrorPage', 'true')['showErrorPage']).toBeTrue();
+    });
+
+    it('los atributos numéricos se convierten a número', () => {
+      expect(set('scrollOffset', '72')['scrollOffset']).toBe(72);
+      expect(set('gridGap', '16')['gridGap']).toBe(16);
+      expect(set('backToTopThreshold', '800')['backToTopThreshold']).toBe(800);
+      expect(set('formStateDebounce', '0')['formStateDebounce']).toBe(0);
+    });
+
+    it('un valor numérico inválido cae al valor por defecto de ese input', () => {
+      expect(set('scrollOffset', 'abc')['scrollOffset']).toBe(0);
+      expect(set('backToTopThreshold', 'abc')['backToTopThreshold']).toBe(400);
+      expect(set('formStateDebounce', 'abc')['formStateDebounce']).toBe(150);
+    });
+
+    it('los números y booleanos asignados como propiedad JS siguen funcionando', () => {
+      expect(set('scrollOffset', 56)['scrollOffset']).toBe(56);
+      expect(set('showBackToTop', false)['showBackToTop']).toBeFalse();
     });
   });
 });

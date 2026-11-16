@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { isCloseAction, isSaveAction, isSubmitAction } from '../actions/action-names';
 import { DynamicViewerComponent } from '@ux-driven-viewer/engine';
 import { ApiDrivenContent, DataBinding, DynamicFormSubmited } from '@ux-driven-viewer/engine';
 
@@ -52,10 +53,11 @@ export class ModalFrameComponent implements OnInit {
   }
 
   onActionClick(payload: any): void {
-    const action = (payload.action || '').toLowerCase();
+    const action: string = payload.action || '';
 
-    // 1. CERRAR / CANCELAR (Se va el modal inmediatamente)
-    if (action.includes('close') || action.includes('cancel')) {
+    // 1. CERRAR / CANCELAR (Se va el modal inmediatamente). Se compara por
+    // palabras completas: `disclose` o `closet` no cierran nada.
+    if (isCloseAction(action)) {
       this.onClose(null); 
       return;
     }
@@ -69,7 +71,7 @@ export class ModalFrameComponent implements OnInit {
     };
 
     // 2. VALIDACIÓN DE FORMULARIO (Solo si es Submit/Save)
-    if (action.includes('submit') || action.includes('save')) {
+    if (isSubmitAction(action) || isSaveAction(action)) {
         if (!this.modalForm.valid) {
             this.modalForm.markAllAsTouched();
             return; // Si hay error, no emitimos nada
