@@ -8,6 +8,7 @@ import {
   Renderer2,
   ViewChild,
   AfterViewInit,
+  HostBinding,
   SimpleChanges,
   Output,
   EventEmitter,
@@ -40,6 +41,7 @@ export interface ControlChangeEvent {
 }
 import { FormFieldMapping, ButtonConfig, FilePayload } from '../models/form-field-mapping.model';
 import { DynamicInyectCssService } from '../dom/dynamic-inyect-css.service';
+import { scopeClassFor } from '../dom/css-scoper';
 import { FormDomSynchronizerService } from '../forms/sync/form-dom-synchronizer.service';
 import { DYNAMIC_CONFIG } from '../config/dynamic-config.token';
 import { DynamicValidationService } from '../forms/validation/dynamic-validation.service';
@@ -106,6 +108,17 @@ export class DynamicViewerComponent<T = any>
   private config = inject(DYNAMIC_CONFIG, { optional: true });
 
   @ViewChild('htmlContainer') htmlContainerRef!: ElementRef<HTMLDivElement>;
+
+  /**
+   * Clase `dynamic-<contentId>` del elemento anfitrión. Es la que identifica
+   * la sección: el `cssComponent` se aísla contra ella, y los selectores que
+   * ya vienen prefijados con `.dynamic-<id>` (formato histórico del backend)
+   * apuntan a este mismo elemento.
+   */
+  @HostBinding('class')
+  get scopeClass(): string {
+    return this.contentId ? scopeClassFor(this.contentId) : '';
+  }
 
   constructor(
     private sanitizer: DomSanitizer,
@@ -605,7 +618,9 @@ export class DynamicViewerComponent<T = any>
     }
     if (this.cssContentString && this.contentId && this.htmlContainerRef) {
       this.styleId = this.cssInjector.generateStyleId(`viewer-${this.contentId}`);
-      this.cssInjector.injectCss(this.cssContentString, this.styleId, this.htmlContainerRef.nativeElement);
+      this.cssInjector.injectCss(this.cssContentString, this.styleId, this.htmlContainerRef.nativeElement, {
+        scopeClass: this.scopeClass,
+      });
     }
   }
 

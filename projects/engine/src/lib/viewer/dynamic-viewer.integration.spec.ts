@@ -599,4 +599,95 @@ describe('DynamicViewerComponent (integración de formularios)', () => {
       expect(console.error).toHaveBeenCalled();
     });
   });
+
+  describe('aislamiento del CSS (DOM real, sin mocks)', () => {
+    let pageElement: HTMLElement;
+
+    beforeEach(() => {
+      // Un elemento de la página host que usa la misma clase que el JSON.
+      pageElement = document.createElement('div');
+      pageElement.className = 'card';
+      document.body.appendChild(pageElement);
+    });
+
+    afterEach(() => pageElement.remove());
+
+    function renderWithCss(css: string, contentId = 'sec-css'): void {
+      fixture = TestBed.createComponent(DynamicViewerComponent);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('contentId', contentId);
+      fixture.componentRef.setInput('htmlContentString', '<div class="card" id="dentro">hola</div>');
+      fixture.componentRef.setInput('cssContentString', css);
+      document.body.appendChild(fixture.nativeElement);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+    }
+
+    afterEach(() => (fixture?.nativeElement as HTMLElement | undefined)?.remove());
+
+    const border = (e: Element) => getComputedStyle(e).borderTopWidth;
+
+    it('el CSS de la sección aplica dentro y NO a la página host', () => {
+      renderWithCss('.card { border: 7px solid red }');
+
+      expect(border(el('#dentro'))).toBe('7px');
+      expect(border(pageElement)).toBe('0px');
+    });
+
+    it('el formato histórico (.dynamic-<id> .algo) sigue aplicando solo a la sección', () => {
+      renderWithCss('.dynamic-sec-css .card { border: 5px solid red }');
+
+      expect(border(el('#dentro'))).toBe('5px');
+      expect(border(pageElement)).toBe('0px');
+    });
+
+    it('una regla sobre body o :root no toca la página', () => {
+      const before = getComputedStyle(document.body).backgroundColor;
+      renderWithCss('body { background: rgb(9, 9, 9) } :root { --x: 1 }');
+
+      expect(getComputedStyle(document.body).backgroundColor).toBe(before);
+      expect(getComputedStyle(host).backgroundColor).toBe('rgb(9, 9, 9)');
+    });
+
+    it('dos secciones con la misma clase en el CSS no se afectan entre sí', () => {
+      renderWithCss('.card { border: 3px solid red }', 'sec-a');
+      const first = host;
+      const firstCard = first.querySelector('#dentro') as HTMLElement;
+
+      const second = TestBed.createComponent(DynamicViewerComponent);
+      second.componentRef.setInput('contentId', 'sec-b');
+      second.componentRef.setInput('htmlContentString', '<div class="card" id="otra">hola</div>');
+      second.componentRef.setInput('cssContentString', '.card { border: 8px solid blue }');
+      document.body.appendChild(second.nativeElement);
+      second.detectChanges();
+      // TestBed retira los elementos raíz de fixtures anteriores al crear uno nuevo.
+      document.body.appendChild(first);
+
+      expect(border(firstCard)).toBe('3px');
+      expect(border(second.nativeElement.querySelector('#otra'))).toBe('8px');
+      second.nativeElement.remove();
+      second.destroy();
+    });
+
+    it('al cambiar el CSS se vuelve a aislar y se retira el anterior', () => {
+      renderWithCss('.card { border: 7px solid red }');
+
+      fixture.componentRef.setInput('cssContentString', '.card { border: 2px solid red }');
+      fixture.detectChanges();
+
+      expect(border(el('#dentro'))).toBe('2px');
+      expect(border(pageElement)).toBe('0px');
+      expect(host.querySelectorAll('style').length).toBe(1);
+    });
+
+    it('el CSS de una sección sin contentId no se inyecta (no hay ámbito al que aislarlo)', () => {
+      fixture = TestBed.createComponent(DynamicViewerComponent);
+      fixture.componentRef.setInput('htmlContentString', '<div class="card" id="dentro">hola</div>');
+      fixture.componentRef.setInput('cssContentString', '.card { border: 7px solid red }');
+      document.body.appendChild(fixture.nativeElement);
+      fixture.detectChanges();
+
+      expect(border(pageElement)).toBe('0px');
+    });
+  });
 });

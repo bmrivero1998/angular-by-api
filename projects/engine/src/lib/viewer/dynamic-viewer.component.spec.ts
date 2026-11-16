@@ -409,4 +409,31 @@ describe('DynamicViewerComponent', () => {
       expect(externalLibsCleanupSpy.cleanupAll).toHaveBeenCalled();
     });
   });
+
+  describe('aislamiento del CSS', () => {
+    it('pide aislar el CSS contra la clase dynamic-<contentId> de la sección', () => {
+      fixture.componentRef.setInput('cssContentString', '.card { color: red }');
+      fixture.detectChanges();
+
+      expect(cssInjectorSpy.injectCss).toHaveBeenCalledWith(
+        '.card { color: red }',
+        'dynamic-style-test',
+        jasmine.any(HTMLElement),
+        { scopeClass: 'dynamic-unit-test-viewer' },
+      );
+    });
+
+    it('pone la clase dynamic-<contentId> en el elemento anfitrión', () => {
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.classList).toContain('dynamic-unit-test-viewer');
+    });
+
+    it('sin contentId no pone ninguna clase de sección', () => {
+      component.contentId = undefined as unknown as string;
+      fixture.detectChanges();
+
+      expect(Array.from(fixture.nativeElement.classList as DOMTokenList).some((c) => c.startsWith('dynamic-'))).toBeFalse();
+    });
+  });
 });

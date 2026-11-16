@@ -29,6 +29,7 @@ export * from './lib/forms/buttons/button-state.service';
 // DOM
 export * from './lib/dom/dom-interactions.service';
 export * from './lib/dom/dynamic-inyect-css.service';
+export { scopeCss, scopeClassFor } from './lib/dom/css-scoper';
 export * from './lib/dom/timer-manager.service';
 export * from './lib/dom/external-libs-cleanup.service';
 

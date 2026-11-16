@@ -9,15 +9,39 @@ El widget no trae diseño propio. Todo el aspecto de una sección viene de su `c
 
 ## Alcance del `cssComponent`
 
-Cada sección se renderiza dentro de un elemento con la clase `dynamic-<id_DocumentHTMLCSS>`. El CSS de la sección **debe** prefijar todos sus selectores con esa clase:
+Cada sección se renderiza dentro de un elemento con la clase `dynamic-<id_DocumentHTMLCSS>`, y **el motor aísla su CSS a ese elemento automáticamente**: una regla de una sección nunca afecta a otra sección ni a la página host. No necesitas prefijar nada.
 
 ```css
 /* id_DocumentHTMLCSS = "compiled-123" */
-.dynamic-compiled-123 .hero { padding: 96px 16px; }
-.dynamic-compiled-123 #el_titulo { font-weight: 700; }
+.card  { border: 1px solid #ddd; }        /* solo las .card de esta sección */
+h1     { font-weight: 700; }              /* solo los h1 de esta sección */
 ```
 
-> **Importante:** hoy el motor no aísla el CSS por su cuenta. El `<style>` de cada sección se inserta tal cual en la página, así que una regla sin prefijo (por ejemplo `.card { ... }`) afecta también al resto de la página host. El aislamiento automático está pendiente.
+Por debajo, cada selector se reescribe como `:where(.dynamic-compiled-123) .card`. El prefijo usa `:where()` para **no sumar especificidad**: el CSS compite contra el resto de reglas exactamente igual que si estuviera sin aislar.
+
+### Qué ocurre con cada cosa
+
+| En el `cssComponent` | Resultado |
+|---|---|
+| `.card { … }`, `h1 { … }`, `* { … }` | Aplican solo dentro de la sección. |
+| `.dynamic-<id> .card { … }` (formato histórico) | Se respeta tal cual: ya estaba aislado. Los JSON que ya prefijan no hay que tocarlos. |
+| `.dynamic-<id> { … }` | Estila el propio contenedor de la sección. |
+| `body { … }`, `html { … }`, `:root { … }` | Significan "la raíz de la sección", no la página. Las variables CSS de `:root` quedan definidas solo para esa sección. |
+| `@media`, `@supports`, `@container`, `@layer { … }` | Sus reglas internas también se aíslan. |
+| CSS anidado (`.a { .b { … } }`) | Se aísla la regla exterior; las anidadas la heredan. |
+| `@keyframes nombre` | Se renombra a `dynamic-<id>__nombre` y se actualizan `animation` / `animation-name`, así dos secciones pueden usar el mismo nombre sin pisarse. |
+| `@import` | **Se elimina.** Carga recursos externos y no se permite. |
+| `@font-face`, `@property`, `@page` | Se dejan tal cual: sus nombres son globales por definición y no se pueden aislar con selectores. Si dos secciones declaran la misma `font-family` con fuentes distintas, gana la última. |
+
+Una regla cuyo selector el navegador no admite tras reescribirlo se descarta en lugar de dejarla sin aislar.
+
+### Lo que sigue siendo global
+
+El aislamiento va en una sola dirección: protege a la página de la sección, pero **la página sigue afectando a la sección**. El widget no usa Shadow DOM a propósito, para que el Bootstrap del host, sus `data-bs-*` y las anclas entre secciones sigan funcionando. Una regla del host como `h1 { color: red }` colorea también los `h1` de las secciones, salvo que la sección declare su propio estilo.
+
+### Para quien usa la librería Angular
+
+`DynamicViewerComponent` pone la clase `dynamic-<contentId>` en su elemento anfitrión y aísla su `cssContentString` contra ella. Si inyectas CSS por tu cuenta con `DynamicInyectCssService`, pasa `{ scopeClass }` como cuarto argumento, o usa directamente `scopeCss(css, scopeClass)`.
 
 ## Clases de validación
 

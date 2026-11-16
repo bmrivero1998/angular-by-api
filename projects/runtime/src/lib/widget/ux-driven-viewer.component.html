@@ -83,7 +83,6 @@
 <!-- ========================================== -->
 <ng-template #viewerTemplate let-item>
   <app-dynamic-viewer
-    [class]="'dynamic-' + item.id_DocumentHTMLCSS"
     [style.grid-column]="'span ' + (item.otros?.source?.colSpan || 12)"
 
     [contentId]="item.id_DocumentHTMLCSS"

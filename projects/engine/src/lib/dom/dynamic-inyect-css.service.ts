@@ -1,5 +1,15 @@
 import { DOCUMENT } from '@angular/common';
 import { Inject, Injectable, Renderer2, RendererFactory2 } from '@angular/core';
+import { scopeCss } from './css-scoper';
+
+export interface InjectCssOptions {
+  /**
+   * Clase del elemento que contiene la sección (`dynamic-<id>`). Si se indica,
+   * el CSS se reescribe para que solo aplique dentro de ese elemento; ver
+   * `scopeCss`. Sin ella el CSS se inserta tal cual y es global.
+   */
+  scopeClass?: string;
+}
 
 @Injectable({
   providedIn: 'root',
@@ -19,10 +29,21 @@ export class DynamicInyectCssService {
    * Ahora acepta un targetElement opcional. 
    * Si se pasa, inyecta el estilo allí (útil para Shadow DOM).
    * Si no, lo inyecta en el HEAD (comportamiento default).
+   *
+   * Con `options.scopeClass` el CSS queda aislado a esa sección (ver `scopeCss`).
    */
-  public injectCss(cssContent: string, styleId: string, targetElement?: HTMLElement): void {
+  public injectCss(
+    cssContent: string,
+    styleId: string,
+    targetElement?: HTMLElement,
+    options?: InjectCssOptions,
+  ): void {
     // 1. Limpieza previa (busca en el target o en el head)
     this.removeCss(styleId, targetElement);
+
+    if (options?.scopeClass) {
+      cssContent = scopeCss(cssContent, options.scopeClass);
+    }
 
     // 2. Crear el elemento style
     const styleElement = this.renderer.createElement('style');

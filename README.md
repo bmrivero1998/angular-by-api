@@ -85,7 +85,7 @@ Más detalle en la [guía de contribución](CONTRIBUTING.md).
 
 ## Estado del proyecto
 
-En estabilización. La estructura y el formato del JSON están definidos; quedan correcciones pendientes en validación de formularios, lógica condicional y aislamiento de CSS, señaladas en la documentación de cada tema.
+En estabilización. La estructura y el formato del JSON están definidos; quedan correcciones pendientes en la carga de contenido (varios widgets en una misma página, orden de las secciones `static` / `dynamic`, páginas de error) y en las acciones que abren o cierran modales.
 
 ## Contribuir
 

@@ -5,6 +5,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Corregido (aislamiento del CSS)
+
+- El `cssComponent` de cada sección queda aislado a esa sección: una regla `.card { … }` del JSON ya no afecta a las tarjetas de la página host ni a otras secciones. Antes dependía de que el backend prefijara bien cada selector; ahora el motor lo hace por su cuenta.
+- Los JSON que ya prefijan sus selectores con `.dynamic-<id>` siguen funcionando sin cambios.
+- `html`, `body` y `:root` dentro de un `cssComponent` se refieren a la raíz de la sección, no a la página.
+- Los `@keyframes` se renombran por sección, para que dos secciones con el mismo nombre no se pisen.
+- Se elimina `@import` de los `cssComponent`.
+- El prefijo de aislamiento usa `:where()`, así que no cambia la especificidad de las reglas.
+- Se quita el Bootstrap completo que iba empaquetado dentro del componente y que no aplicaba a nada (el HTML inyectado no lleva los atributos del componente). `ux-driven-viewer.js` pasa de unos 696 kB a unos 338 kB, y la librería deja de depender del paquete `bootstrap`.
+
+### Cambiado (aislamiento del CSS)
+
+- `DynamicViewerComponent` pone la clase `dynamic-<contentId>` en su propio elemento; ya no la pone el widget.
+- `DynamicInyectCssService.injectCss` acepta un cuarto argumento `{ scopeClass }`. Se exportan `scopeCss` y `scopeClassFor`.
+- Un `cssComponent` de una sección sin `contentId` no se inyecta.
+
 ### Corregido (lógica condicional)
 
 - `showIf` / `hideIf` aceptan los literales `true`, `false` y `null` (`acepta === true`) y el prefijo `form.` (`form.tipo === 'premium'`). Antes lanzaban `SyntaxError` y el campo quedaba oculto para siempre; los ejemplos de la demo no funcionaban.
