@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mar Rivero · Portafolio (ux-driven-viewer)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* =====================================================================
+   Esta página es SOLO HTML. No hay framework, no hay router, no hay build:
+   toda la UI (menú, páginas, formulario, pie) sale de JSON que se le da a
+   <ux-driven-viewer>. Navegar = reenviar el JSON con otras secciones.
+   Aquí solo viven los tokens de diseño y el CSS de la página host.
+   ===================================================================== */
+:root{--bg:#07080d;--bg2:#10121b;--card:#141724;--line:#23273a;--tx:#eef0f8;--mut:#9aa0b8;--ac:#7c5cff;--ac2:#22d3ee;--bad:#ff5d73;--good:#34d399;--r:18px}
+html[data-theme=light]{--bg:#f6f7fb;--bg2:#fff;--card:#fff;--line:#e3e6f1;--tx:#12142a;--mut:#5d637c;--ac:#5b3df5;--ac2:#0891b2}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.6 Inter,system-ui,sans-serif;transition:background .3s,color .3s}
+body::before{content:"";position:fixed;inset:-20% -10% auto auto;width:60vw;height:60vw;background:radial-gradient(closest-side,color-mix(in srgb,var(--ac) 28%,transparent),transparent);pointer-events:none;z-index:0}
+ux-driven-viewer{display:block;position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:0 20px}
+h1,h2,h3,h4{font-family:'Space Grotesk',Inter,sans-serif;line-height:1.1;margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+
+/* --- el menú no se vuelve a pintar: su estado activo lo da <body data-route> --- */
+body[data-route="inicio"] [data-nav="inicio"],
+body[data-route="proyectos"] [data-nav="proyectos"],
+body[data-route^="proyecto/"] [data-nav="proyectos"],
+body[data-route="servicios"] [data-nav="servicios"],
+body[data-route="contacto"] [data-nav="contacto"]{color:var(--tx);background:color-mix(in srgb,var(--ac) 22%,transparent)}
+body[data-filter="all"] [data-filter="all"],body[data-filter="web"] [data-filter="web"],
+body[data-filter="app"] [data-filter="app"],body[data-filter="ux"] [data-filter="ux"]{background:var(--ac);color:#fff;border-color:var(--ac)}
+
+/* --- transición entre páginas: las secciones dynamic nuevas "entran" --- */
+@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+ux-driven-viewer [class*="dynamic-pg-"]{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+
+/* --- clases de validación propias (en vez de is-invalid de Bootstrap) --- */
+ux-driven-viewer .is-bad{border-color:var(--bad)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 22%,transparent)}
+ux-driven-viewer .is-good{border-color:var(--good)!important}
+
+/* --- inspector: muestra qué hizo el widget con cada navegación --- */
+#insp{position:fixed;left:14px;bottom:14px;z-index:50;max-width:calc(100vw - 28px);font:12px/1.4 ui-monospace,Menlo,monospace;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px 12px;color:var(--mut);box-shadow:0 10px 30px #0006}
+#insp b{color:var(--ac2)}
+#boot{position:fixed;inset:0;display:grid;place-items:center;z-index:5;font:14px Inter,sans-serif;color:var(--mut);pointer-events:none}
+#warn{display:none;margin:20px;padding:14px;border-radius:12px;background:#ff5d7322;border:1px solid var(--bad);position:relative;z-index:2}
+@media (prefers-reduced-motion:reduce){ux-driven-viewer [class*="dynamic-pg-"]{animation:none}html{scroll-behavior:auto}}
+</style>
+</head>
+<body data-route="inicio" data-filter="all">
+
+<div id="warn"></div>
+<div id="boot">Cargando…</div>
+
+<!-- Un solo elemento. grid-gap separa las secciones; error-class / success-class
+     cambian las clases con las que el motor marca los campos inválidos / válidos. -->
+<ux-driven-viewer id="viewer" grid-gap="24" error-class="is-bad" success-class="is-good"></ux-driven-viewer>
+
+<div id="insp">inspector · esperando…</div>
+
+<script>
+/* ---------------------------------------------------------------
+   DATOS DE LA PÁGINA (esto sería la respuesta de tu backend)
+   --------------------------------------------------------------- */
+const ME = { nombre: 'Mar Rivero', rol: 'Ingeniera frontend & UX', email: 'hola@marrivero.dev', ciudad: 'Ciudad de México' };
+
+const PROYECTOS = [
+  { slug: 'atlas',   tag: 'web', titulo: 'Atlas',   resumen: 'Panel de logística en tiempo real para 40 almacenes.', hue: 262, stack: ['Angular', 'RxJS', 'WebSockets'], metrica: ['-38 %', 'tiempo de despacho'] },
+  { slug: 'brisa',   tag: 'app', titulo: 'Brisa',   resumen: 'App de bienestar con rutinas guiadas y modo sin conexión.', hue: 190, stack: ['Ionic', 'PWA', 'IndexedDB'], metrica: ['4.8★', 'valoración en tiendas'] },
+  { slug: 'kinto',   tag: 'ux',  titulo: 'Kinto',   resumen: 'Rediseño del onboarding de una fintech: de 9 pasos a 3.', hue: 330, stack: ['Figma', 'Pruebas de uso', 'A/B'], metrica: ['+62 %', 'activación'] },
+  { slug: 'orbita',  tag: 'web', titulo: 'Órbita',  resumen: 'Sistema de diseño con 120 componentes y tokens multi‑marca.', hue: 24,  stack: ['Web Components', 'Storybook'], metrica: ['120', 'componentes'] },
+  { slug: 'pulso',   tag: 'app', titulo: 'Pulso',   resumen: 'Tablero móvil de métricas de salud para clínicas.', hue: 150, stack: ['Flutter', 'GraphQL'], metrica: ['12 k', 'usuarios activos'] },
+  { slug: 'lumen',   tag: 'ux',  titulo: 'Lumen',   resumen: 'Investigación y accesibilidad AA para un portal de gobierno.', hue: 48,  stack: ['WCAG', 'Entrevistas'], metrica: ['AA', 'cumplimiento WCAG'] },
+];
+const PLANES = [
+  { id: 'landing',  nombre: 'Landing',  precio: '$1,200', txt: 'Una página rápida, accesible y lista para convertir.', items: ['Diseño + desarrollo', '1 semana', 'SEO técnico básico'] },
+  { id: 'producto', nombre: 'Producto', precio: '$4,800', txt: 'Una aplicación completa con diseño de sistema.', items: ['Descubrimiento + prototipo', '6 semanas', 'Pruebas y documentación'], destacado: true },
+  { id: 'asesoria', nombre: 'Asesoría', precio: '$90/h',  txt: 'Revisión de arquitectura, rendimiento o UX.', items: ['Sesiones por videollamada', 'Informe con prioridades', 'Sin permanencia'] },
+];
+const PAISES = ['Argentina', 'Bolivia', 'Chile', 'Colombia', 'Costa Rica', 'Ecuador', 'España', 'Guatemala', 'México', 'Panamá', 'Perú', 'Uruguay'];
+
+/* ---------------------------------------------------------------
+   CONSTRUCTORES DE SECCIONES
+   dynamic = se actualiza sola; static = estructura (recarga todo).
+   --------------------------------------------------------------- */
+const dyn = (id, htmlComponent, cssComponent = '', extra = {}) => ({ id_DocumentHTMLCSS: id, renderType: 'dynamic', htmlComponent, cssComponent, ...extra });
+const go = (route, label, cls = 'btn', extra = '') =>
+  `<button type="button" class="${cls}" data-dynamic-action="go_to" data-route="${route}" ${extra}>${label}</button>`;
+
+const BTN_CSS = `
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:transparent;padding:11px 20px;border-radius:999px;font-weight:600;transition:.2s}
+.btn:hover{transform:translateY(-2px);border-color:var(--ac)}
+.btn.pri{background:linear-gradient(135deg,var(--ac),var(--ac2));border:0;color:#fff;box-shadow:0 8px 28px color-mix(in srgb,var(--ac) 45%,transparent)}
+.btn.chip{padding:7px 16px;font-size:14px;color:var(--mut)}`;
+
+/* --- estructura: menú y pie (static: casi nunca cambian) --- */
+const NAV = {
+  id_DocumentHTMLCSS: 'nav', renderType: 'static',
+  htmlComponent: `<header class="bar">
+    <button type="button" class="brand" data-dynamic-action="go_to" data-route="inicio"><i></i><span class="nm">${ME.nombre.split(' ')[0].toLowerCase()}<span>.dev</span></span></button>
+    <nav>
+      <button type="button" data-nav="inicio"    data-dynamic-action="go_to" data-route="inicio">Inicio</button>
+      <button type="button" data-nav="proyectos" data-dynamic-action="go_to" data-route="proyectos">Proyectos</button>
+      <button type="button" data-nav="servicios" data-dynamic-action="go_to" data-route="servicios">Servicios</button>
+      <button type="button" data-nav="contacto"  data-dynamic-action="go_to" data-route="contacto">Contacto</button>
+    </nav>
+    <button type="button" class="theme" data-dynamic-action="toggle_theme" aria-label="Cambiar tema">◐</button>
+  </header>`,
+  cssComponent: `
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 0;position:sticky;top:0;z-index:10;backdrop-filter:blur(14px)}
+  .bar button{background:none;border:0;padding:8px 14px;border-radius:999px;color:var(--mut);font-weight:500;transition:.2s}
+  .bar button:hover{color:var(--tx)}
+  .bar nav{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+  .brand{font:700 20px 'Space Grotesk',sans-serif!important;color:var(--tx)!important;display:flex;align-items:center;gap:8px;padding-left:0!important}
+  .brand i{width:14px;height:14px;border-radius:5px;background:linear-gradient(135deg,var(--ac),var(--ac2));display:inline-block;transform:rotate(45deg)}
+  .brand span{color:var(--ac2)}
+  .theme{font-size:18px!important;border:1px solid var(--line)!important}
+  @media(max-width:620px){.bar{flex-wrap:wrap}.bar nav{order:3;width:100%}}`,
+};
+const FOOT = {
+  id_DocumentHTMLCSS: 'pie', renderType: 'static',
+  htmlComponent: `<footer class="pie"><span>© <b id="pie_anio"></b> ${ME.nombre}. Hecho solo con HTML y JSON.</span>
+    <span>${go('servicios', 'Servicios', 'lnk')} · ${go('contacto', 'Contacto', 'lnk')} · <a href="mailto:${ME.email}">${ME.email}</a></span></footer>`,
+  cssComponent: `.pie{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:32px 0 70px;margin-top:24px;border-top:1px solid var(--line);color:var(--mut);font-size:14px}
+  .lnk{background:none;border:0;padding:0;color:var(--mut);text-decoration:underline}.lnk:hover{color:var(--tx)}a{color:var(--ac2)}`,
+  dataBindings: [{ selector: '#pie_anio', value: String(new Date().getFullYear()) }],
+};
+
+/* --- páginas --- */
+function paginaInicio() {
+  return [
+    dyn('pg-inicio-hero', `<section class="hero">
+      <p class="eyebrow">● Disponible para proyectos · ${ME.ciudad}</p>
+      <h1>Diseño y construyo <em>interfaces</em> que se sienten rápidas.</h1>
+      <p class="lead">Soy ${ME.nombre}, ${ME.rol.toLowerCase()}. Convierto ideas confusas en productos claros, accesibles y medibles.</p>
+      <div class="cta">${go('proyectos', 'Ver proyectos →', 'btn pri')}${go('contacto', 'Hablemos', 'btn')}</div>
+    </section>`, BTN_CSS + `
+    .hero{padding:72px 0 24px}.eyebrow{color:var(--good);font:500 14px ui-monospace,monospace;margin:0 0 20px}
+    h1{font-size:clamp(38px,7vw,76px);letter-spacing:-.03em;max-width:15ch}
+    h1 em{font-style:normal;color:var(--ac2)}
+    .lead{max-width:56ch;color:var(--mut);font-size:19px;margin:22px 0 30px}.cta{display:flex;gap:12px;flex-wrap:wrap}`),
+    dyn('pg-inicio-stats', `<div class="stats">
+      <div><b>9</b><span>años construyendo producto</span></div><div><b>60+</b><span>proyectos entregados</span></div>
+      <div><b>98</b><span>Lighthouse promedio</span></div><div><b>4</b><span>idiomas de interfaz</span></div></div>`,
+    `.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+     .stats div{background:var(--card);padding:24px}.stats b{display:block;font:700 40px 'Space Grotesk',sans-serif;color:var(--ac2)}
+     .stats span{color:var(--mut);font-size:14px}`),
+    dyn('pg-inicio-destacados', `<h2 class="t">Trabajo reciente</h2><div class="g">${PROYECTOS.slice(0, 3).map(tarjeta).join('')}</div>
+      <p class="more">${go('proyectos', 'Ver los 6 proyectos →', 'btn')}</p>`, BTN_CSS + CARD_CSS + `.t{font-size:30px;margin:24px 0 18px}.more{margin:22px 0 0}`),
+  ];
+}
+
+const CARD_CSS = `
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px}
+.card{all:unset;box-sizing:border-box;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:.25s}
+.card:hover{transform:translateY(-6px);border-color:var(--ac);box-shadow:0 18px 40px #0004}
+.thumb{height:150px;position:relative}.thumb::after{content:attr(data-tag);position:absolute;top:12px;left:12px;background:#0007;color:#fff;font:600 11px ui-monospace,monospace;padding:3px 9px;border-radius:99px;text-transform:uppercase}
+.body{padding:18px 20px 22px}.body h3{font-size:22px;margin-bottom:6px}.body p{margin:0 0 14px;color:var(--mut);font-size:15px}
+.tags{display:flex;gap:6px;flex-wrap:wrap}.tags i{font-style:normal;font-size:12px;border:1px solid var(--line);padding:2px 10px;border-radius:99px;color:var(--mut)}`;
+
+function tarjeta(p) {
+  return `<button type="button" class="card" data-dynamic-action="go_to" data-route="proyecto/${p.slug}">
+    <div class="thumb" data-tag="${p.tag}" style="background:linear-gradient(135deg,hsl(${p.hue} 85% 58%),hsl(${(p.hue + 60) % 360} 85% 38%))"></div>
+    <div class="body"><h3>${p.titulo}</h3><p>${p.resumen}</p><div class="tags">${p.stack.map((s) => `<i>${s}</i>`).join('')}</div></div></button>`;
+}
+
+function paginaProyectos(filtro = 'all') {
+  const lista = PROYECTOS.filter((p) => filtro === 'all' || p.tag === filtro);
+  const chip = (f, t) => `<button type="button" class="btn chip" data-dynamic-action="filter" data-filter="${f}">${t}</button>`;
+  return [
+    // La cabecera con los filtros no cambia al filtrar: el widget no la toca.
+    dyn('pg-proy-head', `<h2>Proyectos</h2><p class="sub">Filtra: solo se reemplaza la cuadrícula, esta cabecera (y el scroll) se quedan igual.</p>
+      <div class="chips">${chip('all', 'Todos')}${chip('web', 'Web')}${chip('app', 'Apps')}${chip('ux', 'UX')}</div>`,
+    BTN_CSS + `h2{font-size:clamp(32px,5vw,52px);margin-top:36px}.sub{color:var(--mut);margin:8px 0 20px}.chips{display:flex;gap:8px;flex-wrap:wrap}`),
+    // Esta sí cambia con el filtro: es la única sección que se actualiza.
+    dyn('pg-proy-grid', `<div class="g">${lista.map(tarjeta).join('')}</div>`, CARD_CSS),
+  ];
+}
+
+function paginaProyecto(slug) {
+  const p = PROYECTOS.find((x) => x.slug === slug);
+  if (!p) return paginaError('No encontré ese proyecto', 'Quizá el enlace está mal escrito.');
+  const i = PROYECTOS.indexOf(p), sig = PROYECTOS[(i + 1) % PROYECTOS.length];
+  return [
+    dyn('pg-det-hero', `<div class="hero" style="--h:${p.hue}">
+      ${go('proyectos', '← Proyectos', 'back')}
+      <p class="tag">${p.tag.toUpperCase()} · caso de estudio</p><h1>${p.titulo}</h1><p class="lead">${p.resumen}</p></div>`,
+    `.hero{margin-top:20px;padding:56px 36px;border-radius:var(--r);background:linear-gradient(135deg,hsl(var(--h) 80% 55% / .9),hsl(calc(var(--h) + 60) 80% 30% / .95));color:#fff}
+     h1{font-size:clamp(44px,8vw,92px);letter-spacing:-.03em}.tag{font:600 13px ui-monospace,monospace;opacity:.8}.lead{max-width:50ch;font-size:19px;opacity:.92}
+     .back{background:#0004;border:0;color:#fff;padding:7px 14px;border-radius:99px;margin-bottom:26px}`),
+    dyn('pg-det-datos', `<div class="k"><div><small>Resultado</small><b>${p.metrica[0]}</b><span>${p.metrica[1]}</span></div>
+      <div><small>Stack</small><span>${p.stack.join(' · ')}</span></div><div><small>Rol</small><span>${ME.rol}</span></div></div>`,
+    `.k{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}.k div{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+     small{display:block;color:var(--mut);font:500 12px ui-monospace,monospace;text-transform:uppercase;margin-bottom:6px}b{font:700 38px 'Space Grotesk';display:block;color:var(--ac2)}`),
+    dyn('pg-det-texto', `<h3>El reto</h3><p>El equipo necesitaba avanzar rápido sin acumular deuda visual ni técnica. Empezamos con una semana de descubrimiento y un prototipo navegable antes de escribir producción.</p>
+      <h3>La solución</h3><p>Componentes pequeños, contratos claros entre diseño y código, y métricas desde el primer día. Cada decisión se validó con usuarios reales.</p>
+      <div class="nx">${go('proyecto/' + sig.slug, `Siguiente: ${sig.titulo} →`, 'btn pri')}${go('contacto', 'Quiero algo así', 'btn')}</div>`,
+    BTN_CSS + `h3{font-size:24px;margin:18px 0 6px}p{color:var(--mut);max-width:70ch;margin:0 0 8px}.nx{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}`),
+  ];
+}
+
+function paginaServicios(planElegido) {
+  return [
+    dyn('pg-serv-head', `<h2>Servicios</h2><p class="sub">Elegir un plan te lleva al formulario <b>con el plan ya seleccionado</b> (<code>formInitialData</code>).</p>`,
+      `h2{font-size:clamp(32px,5vw,52px);margin-top:36px}.sub{color:var(--mut);max-width:60ch}code{color:var(--ac2)}`),
+    dyn('pg-serv-planes', `<div class="pl">${PLANES.map((p) => `<article class="${p.destacado ? 'hot' : ''}">
+      ${p.destacado ? '<em>Más pedido</em>' : ''}<h3>${p.nombre}</h3><b>${p.precio}</b><p>${p.txt}</p>
+      <ul>${p.items.map((x) => `<li>${x}</li>`).join('')}</ul>
+      ${go('contacto', 'Elegir ' + p.nombre, p.destacado ? 'btn pri' : 'btn', `data-plan="${p.id}"`)}</article>`).join('')}</div>`,
+    BTN_CSS + `.pl{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+     article{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px;position:relative;display:flex;flex-direction:column;gap:8px}
+     article.hot{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac),0 20px 50px color-mix(in srgb,var(--ac) 25%,transparent)}
+     em{position:absolute;top:-12px;right:20px;background:var(--ac);color:#fff;font:600 12px Inter;padding:3px 12px;border-radius:99px;font-style:normal}
+     h3{font-size:24px}b{font:700 40px 'Space Grotesk'}p{color:var(--mut);margin:0}ul{margin:6px 0 14px;padding-left:18px;color:var(--mut);flex:1}.btn{justify-content:center}`),
+    dyn('pg-serv-faq', `<h3>Preguntas frecuentes</h3>
+      <details><summary>¿Trabajas con equipos que ya existen?</summary><p>Sí. Me integro a tu tablero, tus revisiones de código y tus ritos.</p></details>
+      <details><summary>¿Qué pasa después de entregar?</summary><p>Incluyo 30 días de soporte y documentación para que tu equipo siga sin mí.</p></details>
+      <details><summary>¿Facturas al extranjero?</summary><p>Sí, en USD o en moneda local.</p></details>`,
+    `h3{font-size:26px;margin-bottom:12px}details{border-bottom:1px solid var(--line);padding:14px 4px}summary{cursor:pointer;font-weight:600}p{color:var(--mut);margin:10px 0 0}`),
+  ];
+}
+
+function paginaContacto(planElegido) {
+  const campo = (id, label, control, extra = '') =>
+    `<div class="f" ${extra}><label for="${id}">${label}</label>${control}<small data-error-for="${id}"></small></div>`;
+  const form = `<form data-dynamic-stepper novalidate>
+    <h3>Cuéntame tu proyecto</h3>
+    <ol data-dynamic-stepper-nav class="sn"></ol>
+
+    <div data-dynamic-step="datos" data-step-title="Tú">
+      ${campo('nombre', 'Nombre', '<input id="nombre" autocomplete="name" placeholder="Ana López">')}
+      ${campo('correo', 'Correo', '<input id="correo" type="email" autocomplete="email" placeholder="ana@empresa.com">')}
+      ${campo('telefono', 'Teléfono (opcional)', '<input id="telefono" inputmode="numeric" placeholder="555-123-4567">')}
+      ${campo('pais', 'País (sugerencias mientras escribes)', '<input id="pais" autocomplete="off" placeholder="Mé…">')}
+    </div>
+
+    <div data-dynamic-step="proyecto" data-step-title="Proyecto">
+      ${campo('plan', 'Servicio', `<select id="plan"><option value="">Elige uno…</option>${PLANES.map((p) => `<option value="${p.id}">${p.nombre}</option>`).join('')}<option value="otro">Otro</option></select>`)}
+      ${campo('otro', 'Cuéntame qué necesitas', '<input id="otro" placeholder="Una app de reservas…">', 'data-visibility-group="otro"')}
+      ${campo('presupuesto', 'Presupuesto aproximado', '<select id="presupuesto"><option value="">Elige…</option><option>Menos de $2,000</option><option>$2,000 – $6,000</option><option>Más de $6,000</option></select>')}
+      ${campo('brief', 'Descripción (mínimo 20 caracteres)', '<textarea id="brief" rows="4" placeholder="Objetivo, fechas, a quién va dirigido…"></textarea>')}
+      ${campo('archivo', 'Adjunto (PDF o imagen, máx. 2 MB)', '<input id="archivo" type="file">')}
+    </div>
+
+    <div data-dynamic-step="enviar" data-step-title="Enviar">
+      <p class="rev">Todo listo. Al enviar, el widget valida <b>todos</b> los pasos y emite un único <code>formSubmit</code> con los datos.</p>
+      <div class="f chk"><input id="acepta" type="checkbox"><label for="acepta">Acepto que me contactes por correo.</label><small data-error-for="acepta"></small></div>
+    </div>
+
+    <div class="acc">
+      <button type="button" class="btn" data-dynamic-action="previous_step" data-show-on-step="not-first">← Atrás</button>
+      <button type="button" class="btn pri" data-dynamic-action="next_step" data-show-on-step="not-last">Siguiente →</button>
+      <button type="submit" id="enviar" class="btn pri" data-show-on-step="last">Enviar mensaje</button>
+    </div></form>`;
+
+  const mapa = (controlName, extra = {}) => ({ controlName, domSelector: '#' + controlName, errorDisplaySelector: `[data-error-for='${controlName}']`, ...extra });
+  return [
+    dyn('pg-cont-info', `<h2>Hablemos</h2><p class="sub">Respondo en menos de 24 h. Este formulario es un stepper de 3 pasos declarado solo con atributos HTML.</p>
+      <ul><li>✉ <a href="mailto:${ME.email}">${ME.email}</a></li><li>📍 ${ME.ciudad}</li><li>🕒 Lun–Vie, 9–18 h</li></ul>
+      <p class="hint">Prueba: avanza con campos vacíos, escribe un correo inválido, elige "Otro" en el servicio o sube un archivo de más de 2 MB.</p>`,
+    `h2{font-size:clamp(32px,5vw,52px);margin-top:36px}.sub{color:var(--mut)}ul{list-style:none;padding:0;margin:20px 0;display:grid;gap:8px}a{color:var(--ac2)}
+     .hint{font-size:14px;color:var(--mut);border-left:3px solid var(--ac);padding-left:12px}`,
+    { otros: { source: { colSpan: 5 } } }),
+    dyn('pg-cont-form', form, BTN_CSS + `
+      form{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px;margin-top:36px}h3{font-size:24px}
+      .sn{display:flex;gap:6px;list-style:none;padding:0;margin:16px 0 20px}.sn li{flex:1;padding:8px 4px;border-bottom:3px solid var(--line);color:var(--mut);font-size:14px;transition:.3s}
+      .sn li[data-step-state=active]{border-color:var(--ac);color:var(--tx);font-weight:600}.sn li[data-step-state=completed]{border-color:var(--good);color:var(--good);cursor:pointer}
+      .step-index{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--tx);font-size:12px;margin-right:6px}
+      [data-step-state=active] .step-index{background:var(--ac);color:#fff}[data-step-state=completed] .step-index{background:var(--good);color:#04130c}
+      .f{margin-bottom:14px}label{display:block;font-size:14px;font-weight:500;margin-bottom:5px}
+      input:not([type=checkbox]),select,textarea{width:100%;background:var(--bg2);color:var(--tx);border:1px solid var(--line);border-radius:12px;padding:11px 14px;font:inherit;outline:0;transition:.2s}
+      input:focus,select:focus,textarea:focus{border-color:var(--ac);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac) 25%,transparent)}
+      small{display:block;color:var(--bad);font-size:13px;min-height:0}small:empty{display:none}
+      .chk{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.chk label{margin:0}.chk small{flex-basis:100%}.rev{color:var(--mut)}code{color:var(--ac2)}
+      .acc{display:flex;justify-content:space-between;gap:10px;margin-top:20px}.acc .btn{margin-left:auto}.acc .btn:first-child:not(:only-child){margin-left:0}
+      .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}`,
+    {
+      formId: 'contacto',
+      otros: { source: { colSpan: 7 } },
+      formInitialData: planElegido ? { plan: planElegido } : {},
+      formMappings: [
+        mapa('nombre', { keyFilter: '[A-Za-zÁÉÍÓÚÜÑáéíóúüñ \\.\\-]', validatorConfig: [{ type: 'required', message: 'Dime tu nombre' }, { type: 'minLength', value: 3, message: 'Mínimo 3 letras' }] }),
+        mapa('correo', { validatorConfig: [{ type: 'required', message: 'Necesito un correo' }, { type: 'email', message: 'Ese correo no parece válido' }] }),
+        mapa('telefono', { inputMask: '999-999-9999', validatorConfig: [{ type: 'minLength', value: 10, message: 'Son 10 dígitos' }] }),
+        mapa('pais', { autoCompleteConfig: { source: PAISES, minChars: 1 } }),
+        mapa('plan', { validatorConfig: [{ type: 'required', message: 'Elige un servicio' }] }),
+        // Lógica condicional: solo aparece (y solo valida) si eliges "Otro".
+        mapa('otro', { showIf: "plan === 'otro'", visibilityGroup: 'otro', validatorConfig: [{ type: 'required', message: 'Cuéntame qué necesitas' }] }),
+        mapa('presupuesto', { validatorConfig: [{ type: 'required', message: 'Elige un rango' }] }),
+        mapa('brief', { validatorConfig: [{ type: 'required', message: 'Escribe una descripción' }, { type: 'minLength', value: 20, message: 'Cuéntame un poco más (20+ caracteres)' }] }),
+        mapa('archivo', { fileUploadConfig: { accept: '.pdf,image/*', maxSize: 2 * 1024 * 1024, maxCount: 1 } }),
+        mapa('acepta', { defaultValue: false, validatorConfig: [{ type: 'requiredTrue', message: 'Marca la casilla para continuar' }] }),
+      ],
+      buttonConfigs: [{ selector: '#enviar', disableWhen: 'formIsInvalid' }],
+    }),
+  ];
+}
+
+function paginaGracias(datos) {
+  const nombre = (datos?.nombre || 'amig@').split(' ')[0];
+  return [dyn('pg-gracias', `<div class="ok"><div class="mark">✓</div><h2>¡Gracias, ${esc(nombre)}!</h2>
+    <p>Recibí tu mensaje (${esc(datos?.correo || '')}). Te respondo en menos de 24 horas.</p>
+    <div>${go('inicio', 'Volver al inicio', 'btn pri')}${go('proyectos', 'Ver proyectos', 'btn')}</div></div>`,
+  BTN_CSS + `.ok{text-align:center;padding:90px 0}.mark{width:84px;height:84px;margin:0 auto 22px;border-radius:50%;display:grid;place-items:center;font-size:40px;color:#04130c;background:var(--good);animation:pop .6s both}
+    @keyframes pop{from{transform:scale(.3);opacity:0}to{transform:none;opacity:1}}h2{font-size:clamp(34px,6vw,60px)}p{color:var(--mut);margin:12px 0 26px}.btn{margin:0 5px}`)];
+}
+
+function paginaError(titulo, texto) {
+  return [dyn('pg-404', `<div class="e"><b>404</b><h2>${titulo}</h2><p>${texto}</p>${go('inicio', 'Ir al inicio', 'btn pri')}</div>`,
+    BTN_CSS + `.e{text-align:center;padding:90px 0}b{font:700 120px 'Space Grotesk';color:var(--line)}p{color:var(--mut)}`)];
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ---------------------------------------------------------------
+   "ROUTER": ruta → JSON. El orden del arreglo es el orden en pantalla.
+   --------------------------------------------------------------- */
+const state = { route: 'inicio', filtro: 'all', plan: '', enviado: null };
+
+function secciones() {
+  const [base, arg] = state.route.split('/');
+  let page;
+  switch (base) {
+    case 'inicio': page = paginaInicio(); break;
+    case 'proyectos': page = paginaProyectos(state.filtro); break;
+    case 'proyecto': page = paginaProyecto(arg); break;
+    case 'servicios': page = paginaServicios(); break;
+    case 'contacto': page = paginaContacto(state.plan); break;
+    case 'gracias': page = paginaGracias(state.enviado); break;
+    default: page = paginaError('Esta página no existe', 'Revisa la dirección o vuelve al inicio.');
+  }
+  return [NAV, ...page, FOOT];
+}
+
+const TITULOS = { inicio: 'Inicio', proyectos: 'Proyectos', servicios: 'Servicios', contacto: 'Contacto', gracias: 'Gracias' };
+const viewer = document.getElementById('viewer');
+const insp = document.getElementById('insp');
+const routeFromHash = () => decodeURIComponent(location.hash.replace(/^#\/?/, '')) || 'inicio';
+
+function render({ scroll = true } = {}) {
+  const [base, arg] = state.route.split('/');
+  document.body.dataset.route = state.route;
+  document.body.dataset.filter = state.filtro;
+  document.title = `${(base === 'proyecto' && PROYECTOS.find((p) => p.slug === arg)?.titulo) || TITULOS[base] || 'No encontrado'} · ${ME.nombre}`;
+  // Aquí ocurre toda la "navegación": se reenvía el JSON completo y el widget
+  // compara por id. Menú y pie (static) no cambian → no se recarga la pantalla;
+  // solo se reemplazan las secciones dynamic de la página.
+  viewer.localSchema = secciones();
+  if (scroll) window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+}
+
+function navegar(ruta) {
+  if (ruta === state.route) return;
+  if (!ruta.startsWith('proyectos')) state.filtro = 'all';
+  if (location.hash !== '#/' + ruta) location.hash = '/' + ruta; // → hashchange → onRoute (el botón Atrás funciona)
+  else onRoute();
+}
+function onRoute() {
+  const nueva = routeFromHash();
+  if (nueva === state.route) return;
+  if (nueva !== 'contacto') state.plan = state.plan; // se conserva hasta enviar
+  state.route = nueva;
+  if (nueva === 'proyectos') state.filtro = 'all';
+  render();
+}
+window.addEventListener('hashchange', onRoute);
+
+/* ---------------------------------------------------------------
+   EVENTOS DEL WIDGET
+   --------------------------------------------------------------- */
+viewer.addEventListener('actionTriggered', (e) => {
+  const { action, clickedElement: el } = e.detail;
+  if (action === 'go_to') {
+    const b = el.closest('[data-route]'), plan = b?.dataset.plan;
+    if (plan) state.plan = plan;
+    navegar(b.dataset.route);
+  } else if (action === 'filter') {
+    state.filtro = el.closest('[data-filter]').dataset.filter;
+    document.body.dataset.filter = state.filtro;
+    render({ scroll: false }); // solo cambia pg-proy-grid → "patched"
+  } else if (action === 'toggle_theme') {
+    const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('mr-theme', t); } catch {}
+  }
+});
+
+viewer.addEventListener('formSubmit', (e) => {
+  state.enviado = e.detail.contacto; // { nombre, correo, ... } indexado por formId
+  state.plan = '';
+  console.log('formSubmit →', e.detail);
+  location.hash = '/gracias';
+});
+
+viewer.addEventListener('contentUpdated', (e) => {
+  const { mode, changedIds } = e.detail;
+  insp.innerHTML = `inspector · <b>${mode}</b> · ${changedIds.length ? changedIds.join(', ') : '—'}`;
+});
+viewer.addEventListener('stepChanged', (e) => {
+  insp.innerHTML = `inspector · <b>stepChanged</b> · ${e.detail.stepId} (${e.detail.index + 1}/${e.detail.total})`;
+});
+viewer.addEventListener('errorOccurred', (e) => console.warn('ux-driven-viewer:', e.detail));
+
+/* ---------------------------------------------------------------
+   ARRANQUE
+   --------------------------------------------------------------- */
+try { const t = localStorage.getItem('mr-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+state.route = routeFromHash();
+
+// Sin type="module": zone.js necesita el scope global clásico.
+const s = document.createElement('script');
+s.src = new URLSearchParams(location.search).has('local')
+  ? 'ux-driven-viewer.js'
+  : 'https://ux-driven-viewer.khiemdoh.com/ux-driven-viewer_1-0-0.js';
+s.onerror = fallo;
+document.head.appendChild(s);
+customElements.whenDefined('ux-driven-viewer').then(() => {
+  document.getElementById('boot').remove();
+  render({ scroll: false });
+});
+setTimeout(() => { if (!customElements.get('ux-driven-viewer')) fallo(); }, 6000);
+function fallo() {
+  const w = document.getElementById('warn');
+  w.style.display = 'block';
+  w.textContent = 'No se pudo cargar ux-driven-viewer (sin red, bloqueado por el visor o el sitio no responde). Abre este archivo en tu navegador normal.';
+}
+</script>
+</body>
+</html>
