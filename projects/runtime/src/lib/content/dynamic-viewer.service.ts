@@ -7,6 +7,7 @@ import {
 } from '@ux-driven-viewer/engine';
 import { DynamicContentService } from './dynamic-content.service';
 import { DomSanitizer } from '@angular/platform-browser';
+import { ERROR_PAGE_ID, buildErrorPage, classifyLoadError } from './error-pages';
 
 /**
  * Qué hizo el widget con un contenido recibido:
@@ -60,6 +61,13 @@ export class DynamicViewerService {
   /** Secciones a pintar, en el orden del JSON. */
   public readonly content$: Observable<ApiDrivenContent[]> = this._content$.asObservable();
 
+  /**
+   * Verdadero mientras lo que hay en pantalla es la página de error de una
+   * carga fallida. No cuenta como contenido: el primer contenido real la
+   * reemplaza, y `updateSections` no se mezcla con ella.
+   */
+  private errorState = false;
+
   /** Cambia con cada recarga completa: invalida la identidad de TODAS las secciones. */
   private epoch = 0;
   /** Cambia cuando se actualiza una sección concreta: invalida solo la suya. */
@@ -81,6 +89,32 @@ export class DynamicViewerService {
   /** Foto de las secciones que se están pintando. */
   public getContentValue(): ApiDrivenContent[] {
     return this._content$.getValue();
+  }
+
+  /** ¿Hay contenido real en pantalla? La página de error no cuenta. */
+  public hasContent(): boolean {
+    return this.sections.length > 0 && !this.errorState;
+  }
+
+  /** ¿Lo que se muestra es la página de error de una carga fallida? */
+  public isShowingErrorPage(): boolean {
+    return this.errorState;
+  }
+
+  /**
+   * Pinta la página de error correspondiente a un fallo de carga (404, sin
+   * acceso, servidor caído...). Solo actúa si todavía no hay contenido: si ya
+   * hay una pantalla funcionando, un fallo al volver a cargar NO la reemplaza.
+   */
+  public showErrorPage(error: unknown): ContentChange {
+    if (this.hasContent()) return { mode: 'unchanged', changedIds: [], issues: [] };
+
+    const { kind, status } = classifyLoadError(error);
+    this.epoch++;
+    this.sections = [this.createSection(buildErrorPage(kind, status))];
+    this.errorState = true;
+    this.publish();
+    return { mode: 'initial', changedIds: [ERROR_PAGE_ID], issues: [] };
   }
 
   // ---------------------------------------------------------------------------
@@ -117,8 +151,9 @@ export class DynamicViewerService {
     const { sections: incoming, issues } = this.normalize(parsed.sections);
     const incomingById = new Map(incoming.map((section) => [section.id_DocumentHTMLCSS, section]));
 
-    const merged = this.sections.map((section) => incomingById.get(section.id) ?? section.source);
-    const existing = new Set(this.sections.map((section) => section.id));
+    const current = this.liveSections();
+    const merged = current.map((section) => incomingById.get(section.id) ?? section.source);
+    const existing = new Set(current.map((section) => section.id));
     incoming.forEach((section) => {
       if (!existing.has(section.id_DocumentHTMLCSS)) merged.push(section);
     });
@@ -131,6 +166,7 @@ export class DynamicViewerService {
   /** Vacía la pantalla. */
   public clearContent(): void {
     this.sections = [];
+    this.errorState = false;
     this.epoch++;
     this._content$.next([]);
   }
@@ -204,7 +240,7 @@ export class DynamicViewerService {
    * - Nada cambió: no se toca nada.
    */
   private reconcile(next: ApiDrivenContent[]): ContentChange {
-    const previous = this.sections;
+    const previous = this.liveSections();
 
     if (previous.length === 0 && next.length === 0) {
       return { mode: 'unchanged', changedIds: [], issues: [] };
@@ -212,6 +248,7 @@ export class DynamicViewerService {
 
     if (previous.length === 0) {
       this.sections = next.map((source) => this.createSection(source));
+      this.errorState = false; // el primer contenido real reemplaza a la página de error
       this.publish();
       return { mode: 'initial', changedIds: next.map((s) => s.id_DocumentHTMLCSS), issues: [] };
     }
@@ -258,6 +295,11 @@ export class DynamicViewerService {
     });
     this.publish();
     return { mode: 'patched', changedIds, issues: [] };
+  }
+
+  /** Las secciones reales: la página de error de una carga fallida no cuenta como contenido previo. */
+  private liveSections(): Section[] {
+    return this.errorState ? [] : this.sections;
   }
 
   private createSection(source: ApiDrivenContent): Section {

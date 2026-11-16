@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { firstValueFrom } from 'rxjs';
 import { ApiDrivenContent } from '@ux-driven-viewer/engine';
 import { ContentChange } from '../content/dynamic-viewer.service';
+import { ModalService } from '../modal/modal.service';
 import { UXDrivenViewerWidgetComponent } from './ux-driven-viewer.component';
 
 /**
@@ -332,6 +333,350 @@ describe('UXDrivenViewerWidgetComponent (actualización de contenido, integraci�
       expect(result.mode).toBe('patched');
       expect(text('novedades')).toBe('Desde el host');
       expect(alive('datos')).toBeTrue();
+    });
+  });
+
+  describe('errores de carga (API)', () => {
+    let http: HttpTestingController;
+    const failure = (status: number) => ({ status, statusText: 'Error' });
+
+    function createWithApi(showErrorPage?: boolean): void {
+      fixture = TestBed.createComponent(UXDrivenViewerWidgetComponent);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('apiUrl', '/api/pantalla');
+      if (showErrorPage !== undefined) fixture.componentRef.setInput('showErrorPage', showErrorPage);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+      http = TestBed.inject(HttpTestingController);
+      spyOn(console, 'error');
+    }
+
+    const errorPage = () => host.querySelector('.ux-error') as HTMLElement | null;
+
+    it('un 404 en la primera carga pinta la página de error, sin spinner y con ready', () => {
+      createWithApi();
+      const errors: string[] = [];
+      const updates: ContentChange[] = [];
+      let ready = 0;
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      component.contentUpdated.subscribe((c) => updates.push(c));
+      component.ready.subscribe(() => ready++);
+
+      http.expectOne('/api/pantalla').flush(null, failure(404));
+      fixture.detectChanges();
+
+      expect(errorPage()?.textContent).toContain('404');
+      expect(errorPage()?.textContent).toContain('No encontramos este contenido');
+      expect(host.querySelector('.ux-error__retry')).toBeNull(); // reintentar no ayuda con un 404
+      expect(component.isLoading).toBeFalse();
+      expect(errors).toEqual(['Error cargando configuración dinámica (HTTP 404)']);
+      expect(updates).toEqual([{ mode: 'initial', changedIds: ['ux-error-page'], issues: [] }]);
+      expect(ready).toBe(1);
+    });
+
+    it('un 503 ofrece Reintentar; al pulsarlo pide el contenido otra vez y lo pinta en lugar del error', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(null, failure(503));
+      fixture.detectChanges();
+      expect(errorPage()).not.toBeNull();
+
+      (host.querySelector('.ux-error__retry') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull(); // se quita mientras reintenta
+      expect(host.querySelector('[role="status"]')).not.toBeNull(); // spinner
+
+      http.expectOne('/api/pantalla').flush(schema());
+      fixture.detectChanges();
+
+      expect(sectionIds()).toEqual(['nav', 'datos', 'novedades', 'pie']);
+      expect(errorPage()).toBeNull();
+    });
+
+    it('si el reintento vuelve a fallar, la página de error reaparece', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      (host.querySelector('.ux-error__retry') as HTMLButtonElement).click();
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).not.toBeNull();
+      expect(component.isLoading).toBeFalse();
+    });
+
+    it('un 403 muestra acceso no autorizado y la sección de error se aísla como cualquier otra', () => {
+      createWithApi();
+
+      http.expectOne('/api/pantalla').flush(null, failure(403));
+      fixture.detectChanges();
+
+      expect(errorPage()?.textContent).toContain('Acceso no autorizado');
+      expect(host.querySelector('.dynamic-ux-error-page')).not.toBeNull();
+    });
+
+    it('si ya hay contenido en pantalla, un fallo al refrescar NO lo reemplaza por la página de error', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(schema());
+      fixture.detectChanges();
+      type('#nombre', 'Ana');
+      const errors: string[] = [];
+      component.errorOccurred.subscribe((e) => errors.push(e));
+
+      component.refresh();
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull();
+      expect(sectionIds()).toEqual(['nav', 'datos', 'novedades', 'pie']);
+      expect((host.querySelector('#nombre') as HTMLInputElement).value).toBe('Ana');
+      expect(errors).toEqual(['Error cargando configuración dinámica (HTTP 500)']);
+    });
+
+    it('con show-error-page desactivado no se pinta nada y solo se informa', () => {
+      createWithApi(false);
+      const errors: string[] = [];
+      component.errorOccurred.subscribe((e) => errors.push(e));
+
+      http.expectOne('/api/pantalla').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull();
+      expect(sectionIds()).toEqual([]);
+      expect(errors.length).toBe(1);
+    });
+
+    it('un error que NO es de la carga de contenido no se convierte en página de error', () => {
+      createWithApi();
+      http.expectOne('/api/pantalla').flush(schema());
+      fixture.detectChanges();
+
+      // Otra petición HTTP de la aplicación que falla (p. ej. un validador asíncrono).
+      TestBed.inject(HttpClient).get('/otra-api').subscribe({ error: () => {} });
+      http.expectOne('/otra-api').flush(null, failure(500));
+      fixture.detectChanges();
+
+      expect(errorPage()).toBeNull();
+      expect(sectionIds()).toEqual(['nav', 'datos', 'novedades', 'pie']);
+    });
+  });
+
+  describe('acciones con "modal" en el nombre (DOM real)', () => {
+    const button = (action: string) =>
+      section('acc', 'static', `<button id="b" type="button" data-dynamic-action="${action}">x</button>`);
+
+    function clickAction(action: string): string[] {
+      create([button(action)]);
+      const received: string[] = [];
+      component.actionTriggered.subscribe((p) => received.push(p.action));
+      (host.querySelector('#b') as HTMLButtonElement).click();
+      return received;
+    }
+
+    it('open_modal llega al host (antes se tragaba y solo cerraba el modal)', () => {
+      expect(clickAction('open_modal')).toEqual(['open_modal']);
+    });
+
+    it('close_modal llega al host además de cerrar el modal', () => {
+      const modal = TestBed.inject(ModalService);
+      spyOn(modal, 'close');
+
+      expect(clickAction('close_modal')).toEqual(['close_modal']);
+      expect(modal.close).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('subida de archivos', () => {
+    let http: HttpTestingController;
+
+    const uploadSection = (uploadUrl: string) =>
+      section('adjuntos', 'dynamic', '<form><input id="doc" type="file"><button id="send" type="submit">Enviar</button></form>', {
+        formId: 'adjuntos',
+        formMappings: [{ controlName: 'doc', domSelector: '#doc', fileUploadConfig: { uploadUrl } }],
+      });
+
+    function createWith(inputs: Record<string, unknown>, schemaOrUrl: unknown): void {
+      fixture = TestBed.createComponent(UXDrivenViewerWidgetComponent);
+      component = fixture.componentInstance;
+      Object.entries(inputs).forEach(([name, value]) => fixture.componentRef.setInput(name, value));
+      if (schemaOrUrl) fixture.componentRef.setInput('localSchema', schemaOrUrl);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+      http = TestBed.inject(HttpTestingController);
+    }
+
+    function choose(name = 'a.pdf'): void {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([new Uint8Array(500)], name));
+      const input = host.querySelector('#doc') as HTMLInputElement;
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    it('re-emite fileUploadChanged para el host', () => {
+      createWith({}, [uploadSection('/api/archivos')]);
+      const events: string[] = [];
+      component.fileUploadChanged.subscribe((c) => events.push(`${c.formId}/${c.controlName}:${c.status}`));
+
+      choose();
+      http.expectOne('/api/archivos').flush('{"id":1}');
+
+      expect(events).toEqual(['adjuntos/doc:uploading', 'adjuntos/doc:done']);
+    });
+
+    it('mientras algo sube, enviar con un botón de acción no emite formSubmit y avisa', () => {
+      createWith({}, [
+        section(
+          'adjuntos',
+          'dynamic',
+          '<form><input id="doc" type="file"><button id="enviar" type="button" data-dynamic-action="submit_form">Enviar</button></form>',
+          { formId: 'adjuntos', formMappings: [{ controlName: 'doc', domSelector: '#doc', fileUploadConfig: { uploadUrl: '/api/archivos' } }] },
+        ),
+      ]);
+      const submitted: unknown[] = [];
+      const errors: string[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      choose();
+
+      (host.querySelector('#enviar') as HTMLButtonElement).click();
+
+      expect(submitted).toEqual([]);
+      expect(errors.some((e) => e.includes('archivo subiéndose'))).toBeTrue();
+      http.expectOne('/api/archivos').flush('{}');
+    });
+
+    it('después de subir, formSubmit lleva el resultado del servidor', () => {
+      createWith({}, [
+        section(
+          'adjuntos',
+          'dynamic',
+          '<form><input id="doc" type="file"><button id="enviar" type="button" data-dynamic-action="submit_form">Enviar</button></form>',
+          { formId: 'adjuntos', formMappings: [{ controlName: 'doc', domSelector: '#doc', fileUploadConfig: { uploadUrl: '/api/archivos' } }] },
+        ),
+      ]);
+      const submitted: unknown[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      choose();
+      http.expectOne('/api/archivos').flush('{"id":5}');
+
+      (host.querySelector('#enviar') as HTMLButtonElement).click();
+
+      expect(submitted).toEqual([{ adjuntos: { doc: { id: 5 } } }]);
+    });
+
+    it('el origen de api-url es de confianza: una URL absoluta a ese origen sube', () => {
+      createWith({ apiUrl: 'https://api.mi-sitio.com/pantalla' }, null);
+      http = TestBed.inject(HttpTestingController);
+      http.expectOne('https://api.mi-sitio.com/pantalla').flush([uploadSection('https://api.mi-sitio.com/archivos')]);
+      fixture.detectChanges();
+
+      choose();
+
+      http.expectOne('https://api.mi-sitio.com/archivos').flush('{}');
+    });
+
+    it('una URL absoluta a otro origen se rechaza aunque venga en el JSON', () => {
+      createWith({ apiUrl: 'https://api.mi-sitio.com/pantalla' }, null);
+      http = TestBed.inject(HttpTestingController);
+      http.expectOne('https://api.mi-sitio.com/pantalla').flush([uploadSection('https://evil.example/robar')]);
+      fixture.detectChanges();
+      const events: string[] = [];
+      component.fileUploadChanged.subscribe((c) => events.push(`${c.status}:${c.error ?? ''}`));
+
+      choose();
+
+      http.expectNone(() => true);
+      expect(events).toEqual([jasmine.stringMatching(/^error:.*origen no permitido/)]);
+    });
+
+    it('allowed-origins (texto separado por comas) permite otros orígenes', () => {
+      createWith({ allowedOrigins: 'https://files.a.com, https://files.b.com' }, [uploadSection('https://files.b.com/up')]);
+
+      choose();
+
+      http.expectOne('https://files.b.com/up').flush('{}');
+      expect(component.trustedOrigins).toEqual(['https://files.a.com', 'https://files.b.com']);
+    });
+
+    it('allowed-origins también acepta un arreglo asignado por JS', () => {
+      createWith({ allowedOrigins: ['https://files.a.com'] }, [uploadSection('https://files.a.com/up')]);
+
+      choose();
+
+      http.expectOne('https://files.a.com/up').flush('{}');
+    });
+  });
+
+  describe('formularios de varios pasos', () => {
+    const stepsSection = () =>
+      section(
+        'registro',
+        'dynamic',
+        `<form data-dynamic-stepper>
+           <div id="p1" data-dynamic-step="datos"><input id="nombre"></div>
+           <div id="p2" data-dynamic-step="fin"><input id="correo"></div>
+           <button id="siguiente" type="button" data-dynamic-action="next_step" data-show-on-step="not-last">Siguiente</button>
+           <button id="enviar" type="button" data-dynamic-action="submit_form" data-show-on-step="last">Enviar</button>
+         </form>`,
+        {
+          formId: 'registro',
+          formMappings: [
+            { controlName: 'nombre', domSelector: '#nombre', validatorConfig: [{ type: 'required', message: 'x' }] },
+            { controlName: 'correo', domSelector: '#correo', validatorConfig: [{ type: 'required', message: 'x' }] },
+          ],
+        },
+      );
+    const fillInput = (selector: string, value: string) => {
+      const input = host.querySelector(selector) as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const visible = () => ['p1', 'p2'].filter((id) => (host.querySelector(`#${id}`) as HTMLElement).style.display !== 'none');
+    const press = (id: string) => (host.querySelector(`#${id}`) as HTMLButtonElement).click();
+
+    it('re-emite stepChanged para el host, con el formId de la sección', () => {
+      create([stepsSection()]);
+      const steps: string[] = [];
+      component.stepChanged.subscribe((c) => steps.push(`${c.formId}:${c.stepId}:${c.direction}`));
+      fillInput('#nombre', 'Ana');
+
+      press('siguiente');
+
+      expect(steps).toEqual(['registro:fin:next']);
+    });
+
+    it('enviar con un paso anterior inválido lleva a ese paso y avisa', () => {
+      create([stepsSection()]);
+      const errors: string[] = [];
+      const submitted: unknown[] = [];
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      fillInput('#nombre', 'Ana');
+      press('siguiente');
+      fillInput('#correo', 'a@b.co');
+      fillInput('#nombre', ''); // el paso 1 se invalida
+      expect(visible()).toEqual(['p2']);
+
+      press('enviar');
+
+      expect(visible()).toEqual(['p1']);
+      expect(submitted).toEqual([]);
+      expect(errors).toEqual(['El formulario contiene errores.']);
+    });
+
+    it('con todo válido, enviar emite el valor de todos los pasos', () => {
+      create([stepsSection()]);
+      const submitted: unknown[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      fillInput('#nombre', 'Ana');
+      press('siguiente');
+      fillInput('#correo', 'a@b.co');
+
+      press('enviar');
+
+      expect(submitted).toEqual([{ registro: { nombre: 'Ana', correo: 'a@b.co' } }]);
     });
   });
 });

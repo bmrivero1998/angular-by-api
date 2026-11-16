@@ -48,7 +48,7 @@ Para **quitar** una sección, reenvía el JSON completo sin ella (una `dynamic` 
 
 ### 3. Con `api-url`
 
-`viewer.refresh()` vuelve a pedir el JSON a la API y lo compara igual que en el caso 1. Lo que ya está en pantalla se queda mientras llega la respuesta; el indicador de carga solo aparece la primera vez. Si la respuesta no se puede leer, **no se borra la pantalla**: se informa por `errorOccurred`.
+`viewer.refresh()` vuelve a pedir el JSON a la API y lo compara igual que en el caso 1. Lo que ya está en pantalla se queda mientras llega la respuesta; el indicador de carga solo aparece la primera vez. Si la respuesta no se puede leer, **no se borra la pantalla**: se informa por `errorOccurred`. Si la petición falla, ver [Errores de carga](errors.md).
 
 ## Qué se conserva y qué se pierde
 

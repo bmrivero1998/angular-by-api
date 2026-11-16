@@ -47,6 +47,8 @@ Reglas clave:
 { "selector": "#el_submit", "disableWhen": "formIsInvalid" }
 ```
 
+> Mientras algo está pendiente (un archivo subiéndose, un validador asíncrono), `formIsInvalid` y `formIsInvalidOrPristine` **también deshabilitan** el botón: todavía no se puede enviar.
+
 ### Condiciones planas (`disableWhen` como string simple)
 
 `formIsInvalid`, `formIsValid`, `formIsPristine`, `formIsDirty`, `formIsTouched`, `formIsUntouched`, `formIsPending`, `formIsInvalidOrPristine`, `formIsEmpty`, `formIsNotEmpty`, `alwaysDisable`, `neverDisable`.

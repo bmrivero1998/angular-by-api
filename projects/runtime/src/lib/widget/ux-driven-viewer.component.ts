@@ -8,8 +8,13 @@ import {
   OnChanges,
   SimpleChanges,
   HostListener,
-  ElementRef
+  ElementRef,
+  booleanAttribute,
+  numberAttribute,
+  QueryList,
+  ViewChildren
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
 import { AbstractControl, FormGroup, PristineChangeEvent, ReactiveFormsModule, TouchedChangeEvent } from '@angular/forms';
 import { Observable, Subscription, filter, finalize, take, debounceTime } from 'rxjs';
@@ -18,8 +23,9 @@ import { Observable, Subscription, filter, finalize, take, debounceTime } from '
 import { DynamicViewerComponent, ControlChangeEvent } from '@ux-driven-viewer/engine';
 import { ApiDrivenContent, DynamicClickPayload } from '@ux-driven-viewer/engine';
 import { ContentChange, DynamicViewerService } from '../content/dynamic-viewer.service';
+import { isCloseAction, isResetAction, isSubmitAction, RETRY_LOAD_ACTION } from '../actions/action-names';
 import { ModalService } from '../modal/modal.service';
-import { FilePayload } from '@ux-driven-viewer/engine';
+import { FilePayload, FileUploadChange, StepChange } from '@ux-driven-viewer/engine';
 
 /** Snapshot del FormGroup completo, emitido en cada tick relevante. */
 export interface FormStateSnapshot {
@@ -30,6 +36,27 @@ export interface FormStateSnapshot {
   pristine: boolean;
   touched: boolean;
   pending: boolean;
+}
+
+/**
+ * Los atributos HTML llegan como texto: sin conversión, `show-back-to-top="false"`
+ * valdría el texto "false" (que cuenta como verdadero) y `scroll-offset="72"`
+ * un texto en vez de un número. Estas funciones los convierten; un valor
+ * inválido cae al valor por defecto del input.
+ */
+function toOffset(value: unknown): number {
+  return numberAttribute(value, 0);
+}
+function toThreshold(value: unknown): number {
+  return numberAttribute(value, 400);
+}
+function toDebounce(value: unknown): number {
+  return numberAttribute(value, 150);
+}
+/** `allowed-origins="https://a.com, https://b.com"` (texto) o un arreglo asignado por JS. */
+function toOrigins(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  return list.map((origin) => String(origin).trim()).filter(Boolean);
 }
 
 @Component({
@@ -74,25 +101,45 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   // Inputs de Navegación
   // --------------------------------------------------------
   /** Compensación en px para el scroll suave de los anchors (#seccion). Útil si tienes un header sticky que tapa el top de la sección destino. Se propaga a cada <app-dynamic-viewer>. */
-  @Input() scrollOffset = 0;
+  @Input({ transform: toOffset }) scrollOffset = 0;
   /** Gap en px entre secciones del grid estructural de 12 columnas. Puramente layout, no diseño — el diseño real vive en cssComponent de cada item. */
-  @Input() gridGap = 0;
+  @Input({ transform: toOffset }) gridGap = 0;
 
   // --------------------------------------------------------
   // Inputs del botón "volver arriba"
   // --------------------------------------------------------
   /** Si es false, no se renderiza el botón "volver arriba" en absoluto. */
-  @Input() showBackToTop = true;
+  @Input({ transform: booleanAttribute }) showBackToTop = true;
   /** Píxeles de scroll antes de que aparezca el botón. */
-  @Input() backToTopThreshold = 400;
+  @Input({ transform: toThreshold }) backToTopThreshold = 400;
+
+  // --------------------------------------------------------
+  // Input de subida de archivos
+  // --------------------------------------------------------
+  /**
+   * Orígenes (separados por coma) a los que el contenido puede enviar datos del
+   * usuario (subida de archivos, sugerencias de autocompletado) además del de
+   * la página y del de `api-url`. Una URL absoluta hacia otro origen se rechaza.
+   */
+  @Input({ transform: toOrigins }) allowedOrigins: string[] = [];
+
+  // --------------------------------------------------------
+  // Input de errores de carga
+  // --------------------------------------------------------
+  /**
+   * Si es false, un fallo en la primera carga por `api-url` solo se informa
+   * por `errorOccurred` y no se pinta la página de error. Útil si el host
+   * quiere mostrar la suya.
+   */
+  @Input({ transform: booleanAttribute }) showErrorPage = true;
 
   // --------------------------------------------------------
   // Inputs de Telemetría / Debug
   // --------------------------------------------------------
   /** Si es true, hace console.group de cada evento interno (control, form, acción). Útil embebido en un host externo sin devtools cómodos. */
-  @Input() debug = false;
+  @Input({ transform: booleanAttribute }) debug = false;
   /** Debounce en ms para `formStateChanged`. 0 = sin debounce (emite en cada tecla). */
-  @Input() formStateDebounce = 150;
+  @Input({ transform: toDebounce }) formStateDebounce = 150;
 
   // --------------------------------------------------------
   // Outputs (Eventos)
@@ -103,6 +150,16 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Output() errorOccurred = new EventEmitter<string>();
   @Output() ready = new EventEmitter<boolean>();
   @Output() fileSelected = new EventEmitter<FilePayload>();
+  /**
+   * Avance y resultado de la subida de un archivo (campos con
+   * `fileUploadConfig.uploadUrl`): `{ controlName, formId, status, progress, result?, error? }`.
+   */
+  @Output() fileUploadChanged = new EventEmitter<FileUploadChange>();
+  /**
+   * Cambio de paso en una sección que es un formulario de varios pasos
+   * (`data-dynamic-stepper`): `{ formId, stepId, index, total, direction, completed }`.
+   */
+  @Output() stepChanged = new EventEmitter<StepChange>();
   /**
    * Cada vez que cambia el contenido en pantalla. `detail.mode` indica qué
    * pasó: `initial` (primera carga), `patched` (solo se actualizaron las
@@ -124,6 +181,10 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   public content$: Observable<ApiDrivenContent[]>;
   /** Solo es verdadero durante la primera carga por API, cuando todavía no hay nada que mostrar. */
   public isLoading = false;
+  /** Las secciones pintadas: se usan para llevar cada formulario de varios pasos a su primer paso inválido. */
+  @ViewChildren(DynamicViewerComponent) private viewers?: QueryList<DynamicViewerComponent>;
+  /** Orígenes de confianza para las URLs del JSON: `allowedOrigins` más el origen de `api-url`. */
+  public trustedOrigins: string[] = [];
   /** Evita pedir el contenido dos veces: lo dispara tanto ngOnChanges como ngOnInit. */
   private initialContentRequested = false;
   public formGroup: FormGroup = new FormGroup({});
@@ -158,6 +219,17 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     this.exposeHostApi(host.nativeElement);
   }
 
+  /** El origen de `api-url` es de confianza para las URLs del JSON; el resto lo declara el host. */
+  private updateTrustedOrigins(): void {
+    const origins = [...this.allowedOrigins];
+    try {
+      if (this.apiUrl) origins.push(new URL(this.apiUrl, location.href).origin);
+    } catch {
+      // api-url no es una URL válida: no aporta ningún origen.
+    }
+    this.trustedOrigins = Array.from(new Set(origins));
+  }
+
   /** Identidad de cada sección para el `trackBy` de la plantilla. */
   public trackSection = (index: number, item: ApiDrivenContent): string => this.dws.trackSection(index, item);
 
@@ -180,11 +252,14 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     if (this.externalForm) {
       this.formGroup = this.externalForm;
     }
+    this.updateTrustedOrigins();
     this.initContentStrategy();
     this.subscribeToFormState();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['apiUrl'] || changes['allowedOrigins']) this.updateTrustedOrigins();
+
     const jsonChange = changes['localSchema'];
     const apiChange = changes['apiUrl'];
 
@@ -308,8 +383,12 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   private loadData(): void {
     // El spinner solo tiene sentido la primera vez: al volver a cargar, lo que
     // ya está en pantalla se queda hasta que llegue la respuesta.
-    const firstLoad = this.dws.getContentValue().length === 0;
-    if (firstLoad) this.isLoading = true;
+    const firstLoad = !this.dws.hasContent();
+    if (firstLoad) {
+      // Un reintento desde la página de error: se quita para dejar solo el spinner.
+      if (this.dws.isShowingErrorPage()) this.dws.clearContent();
+      this.isLoading = true;
+    }
 
     let readyEmitted = false;
     const sub = this.dws.loadInitialContent(this.apiUrl!)
@@ -325,7 +404,16 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
         },
         error: (err) => {
           console.error('[UXWidget] Error:', err);
-          this.errorOccurred.emit('Error cargando configuración dinámica');
+          const status = err instanceof HttpErrorResponse && err.status > 0 ? ` (HTTP ${err.status})` : '';
+          this.errorOccurred.emit(`Error cargando configuración dinámica${status}`);
+
+          // Solo la primera carga: si ya hay una pantalla funcionando, un fallo
+          // al volver a cargar no la reemplaza por una página de error.
+          if (firstLoad && this.showErrorPage) {
+            const change = this.dws.showErrorPage(err);
+            readyEmitted = change.mode === 'initial';
+            this.applyChange(change);
+          }
         }
       });
     this.subs.add(sub);
@@ -357,19 +445,30 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     const action = payload.action;
     this.logDebug('actionTriggered (raw)', payload);
 
-    if (action.includes('modal') || action === 'close') {
-      this.modalService.close();
+    // Botón "Reintentar" de la página de error: vuelve a pedir el contenido.
+    if (action === RETRY_LOAD_ACTION) {
+      this.refresh();
       return;
     }
 
-    if (action.includes('reset')) {
-      this.formGroup.reset();
-    }
-
-    if (action.includes('submit')) {
+    // Las acciones integradas se reconocen por palabras completas (ver
+    // action-names.ts): `open_modal` ya no se confunde con cerrar un modal ni
+    // `reset_password` con vaciar el formulario.
+    if (isSubmitAction(action)) {
       this.submitAllForms();
       return;
     }
+
+    if (isCloseAction(action)) {
+      this.modalService.close();
+    }
+
+    if (isResetAction(action)) {
+      this.formGroup.reset();
+    }
+
+    // Las integradas (cerrar, vaciar) también se reportan al host: antes
+    // `close` y todo lo que contuviera "modal" se tragaba el evento.
 
     const enrichedPayload = {
       ...payload,
@@ -435,10 +534,17 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
    * siempre la misma forma: `{ [formId]: { campo: valor } }`.
    */
   private submitAllForms(): void {
+      if (this.formGroup.pending) {
+        // Una subida de archivos (o un validador asíncrono) sigue en curso.
+        this.errorOccurred.emit('Hay operaciones en curso (por ejemplo, un archivo subiéndose). Espera a que terminen para enviar.');
+        return;
+      }
       if (this.formGroup.valid) {
         this.formSubmit.emit(this.formGroup.value);
       } else {
         this.formGroup.markAllAsTouched();
+        // Con formularios de varios pasos el error puede estar en un paso que ya no se ve.
+        this.viewers?.forEach((viewer) => viewer.revealFirstInvalidStep());
         this.errorOccurred.emit('El formulario contiene errores.');
       }
   }

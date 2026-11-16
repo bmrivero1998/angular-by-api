@@ -45,6 +45,7 @@ export class FormDomSynchronizerService {
     formGroup: FormGroup,
     formContainer: HTMLElement,
     fieldMappings: FormFieldMapping[],
+    allowedOrigins: string[] = [],
   ): void {
     this.disconnect(formInstanceId);
 
@@ -99,7 +100,7 @@ export class FormDomSynchronizerService {
 
       // 6. Configurar autocomplete si existe
       if (mapping.autoCompleteConfig) {
-        this.specialControls.setupAutocomplete(control, elements, mapping, formContainer, externalInstances);
+        this.specialControls.setupAutocomplete(control, elements, mapping, formContainer, externalInstances, allowedOrigins);
       }
 
       // 7. Configurar password si existe

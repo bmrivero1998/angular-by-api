@@ -1,0 +1,39 @@
+[
+  {
+    "id_DocumentHTMLCSS": "archivos",
+    "renderType": "dynamic",
+    "formId": "archivos",
+    "htmlComponent": "<form class=\"p-3\" style=\"max-width: 640px; margin: auto\"><h4>Subida de archivos</h4><p class=\"text-muted\">Prueba con <code>npm run mock-api</code> corriendo. Un nombre con \"fallo\" devuelve 500, con \"grande\" un 413 y con \"vacio\" una respuesta sin cuerpo.</p><div class=\"mb-3\"><label class=\"form-label\" for=\"contrato\">Contrato (PDF o imagen, máx. 2 MB)</label><input id=\"contrato\" type=\"file\" class=\"form-control\" /><progress id=\"avance_contrato\" class=\"w-100 mt-2\" value=\"0\" max=\"100\"></progress><ul id=\"lista_contrato\" class=\"small mb-0\"></ul><div class=\"invalid-feedback d-block\" data-error-for=\"contrato\"></div></div><div class=\"mb-3\"><label class=\"form-label\" for=\"fotos\">Fotos (hasta 3, solo imágenes)</label><input id=\"fotos\" type=\"file\" class=\"form-control\" /><span id=\"avance_fotos\" class=\"small text-muted\"></span><ul id=\"lista_fotos\" class=\"small mb-0\"></ul><div class=\"invalid-feedback d-block\" data-error-for=\"fotos\"></div></div><button id=\"enviar\" type=\"submit\" class=\"btn btn-primary w-100\">Enviar</button></form>",
+    "formMappings": [
+      {
+        "controlName": "contrato",
+        "domSelector": "#contrato",
+        "errorDisplaySelector": "[data-error-for='contrato']",
+        "validatorConfig": [{ "type": "required", "message": "Adjunta el contrato" }],
+        "fileUploadConfig": {
+          "accept": ".pdf,image/*",
+          "maxSize": 2097152,
+          "uploadUrl": "/api/archivos",
+          "progressSelector": "#avance_contrato",
+          "fileListSelector": "#lista_contrato"
+        }
+      },
+      {
+        "controlName": "fotos",
+        "domSelector": "#fotos",
+        "errorDisplaySelector": "[data-error-for='fotos']",
+        "fileUploadConfig": {
+          "accept": "image/*",
+          "multiple": true,
+          "maxCount": 3,
+          "maxSize": 2097152,
+          "uploadUrl": "/api/archivos",
+          "fieldName": "foto",
+          "progressSelector": "#avance_fotos",
+          "fileListSelector": "#lista_fotos"
+        }
+      }
+    ],
+    "buttonConfigs": [{ "selector": "#enviar", "disableWhen": "formIsInvalid" }]
+  }
+]

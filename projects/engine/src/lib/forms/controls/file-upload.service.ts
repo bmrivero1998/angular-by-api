@@ -1,11 +1,5 @@
 import { Injectable } from '@angular/core';
-
-export interface FileUploadConfig {
-  accept?: string;
-  multiple?: boolean;
-  maxSize?: number;
-  maxCount?: number;
-}
+import { FileUploadConfig } from '../../models/form-field-mapping.model';
 
 /**
  * Toda la lógica de validación de archivos (tamaño, tipo, cantidad) vivía

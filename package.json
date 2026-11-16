@@ -11,7 +11,8 @@
     "test": "npm run test:engine && npm run test:runtime",
     "test:engine": "ng test engine",
     "test:runtime": "ng test runtime",
-    "test:ci": "ng test engine --watch=false --browsers=ChromeHeadlessCI && ng test runtime --watch=false --browsers=ChromeHeadlessCI"
+    "test:ci": "ng test engine --watch=false --browsers=ChromeHeadlessCI && ng test runtime --watch=false --browsers=ChromeHeadlessCI",
+    "mock-api": "node scripts/mock-api.js"
   },
   "private": true,
   "dependencies": {

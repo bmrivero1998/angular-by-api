@@ -61,6 +61,19 @@ export interface AsyncValidatorConfig {
   message: string;       // Mensaje a mostrar si falla
 }
 
+/** Estado de la subida de un campo con `fileUploadConfig.uploadUrl`. */
+export interface FileUploadChange {
+  controlName: string;
+  formId: string;
+  status: 'uploading' | 'done' | 'error';
+  /** Avance de 0 a 100. */
+  progress: number;
+  /** Con `done`: la respuesta del servidor (un arreglo si hay varios archivos). */
+  result?: unknown;
+  /** Con `error`: el motivo, listo para mostrar. */
+  error?: string;
+}
+
 export interface FilePayload {
   controlName: string;
   file: File | File[];
@@ -112,18 +125,62 @@ export interface FilePayload {
   };
   
   // Para autocomplete/combobox
-   export interface AutoCompleteConfig {
-    source?: string[] | ((query: string) => Promise<string[]>); // Fuente de datos
-    minChars?: number;        // Mínimo de caracteres para buscar
-    debounceTime?: number;    // Debounce para búsquedas
-  };
+export interface AutoCompleteConfig {
+  /**
+   * Sugerencias: una lista fija o, solo desde la librería Angular (una función
+   * no cabe en un JSON), una función que las devuelve para lo escrito.
+   */
+  source?: string[] | ((query: string) => Promise<Array<string | AutoCompleteSuggestion>>);
+  /**
+   * Endpoint que devuelve las sugerencias (`GET <sourceUrl>?q=<lo escrito>`),
+   * para usarlo desde el JSON. Responde con un arreglo de textos o de objetos
+   * `{ value, label? }`. Una URL relativa se resuelve contra `apiUrl`; una
+   * absoluta solo si su origen es de confianza (ver `resolveTrustedUrl`).
+   */
+  sourceUrl?: string;
+  /** Nombre del parámetro con lo escrito. Por defecto `q`. */
+  queryParam?: string;
+  /** Mínimo de caracteres para buscar. Por defecto 2. */
+  minChars?: number;
+  /** Espera, en ms, tras la última tecla antes de buscar. Por defecto 300. */
+  debounceTime?: number;
+}
+
+/** Una sugerencia con texto de ayuda: `value` es lo que se escribe en el campo, `label` lo que se muestra junto a él. */
+export interface AutoCompleteSuggestion {
+  value: string;
+  label?: string;
+}
   
   // Para upload de archivos
-   export interface FileUploadConfig {
-    accept?: string;          // Tipos de archivo aceptados (ej: ".pdf,.docx")
-    maxSize?: number;         // Tamaño máximo en bytes
-    multiple?: boolean;       // Permitir múltiples archivos
-  };
+export interface FileUploadConfig {
+  /** Tipos de archivo aceptados (ej: ".pdf,.docx", "image/*"). */
+  accept?: string;
+  /** Tamaño máximo por archivo, en bytes. */
+  maxSize?: number;
+  /** Permitir elegir varios archivos. */
+  multiple?: boolean;
+  /** Cantidad máxima de archivos (con `multiple`). */
+  maxCount?: number;
+
+  /**
+   * Si se indica, los archivos válidos se SUBEN a esta URL apenas se eligen
+   * (multipart/form-data, una petición por archivo). Una URL relativa se
+   * resuelve contra `DYNAMIC_CONFIG.apiUrl`. Una absoluta solo se acepta si su
+   * origen es el de la página, el de `apiUrl`/`api-url` o está permitido
+   * explícitamente (ver `allowedOrigins`). Sin `uploadUrl`, el motor solo
+   * valida y avisa con `fileSelected`, y la subida la hace el host.
+   */
+  uploadUrl?: string;
+  /** Método HTTP de la subida. Por defecto `POST`. */
+  method?: 'POST' | 'PUT';
+  /** Nombre del campo del formulario multipart que lleva el archivo. Por defecto `file`. */
+  fieldName?: string;
+  /** Elemento donde mostrar el avance: un `<progress>` (se le asigna `value`) o cualquier otro (se escribe `45%`). */
+  progressSelector?: string;
+  /** Elemento donde listar los archivos elegidos: un `<ul>`/`<ol>` (un `<li>` por archivo) o cualquier otro (texto separado por comas). */
+  fileListSelector?: string;
+}
 
   // Para sliders/carousels
     export interface SliderConfig {

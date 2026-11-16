@@ -1,0 +1,60 @@
+[
+  {
+    "id_DocumentHTMLCSS": "registro",
+    "renderType": "dynamic",
+    "formId": "registro",
+    "htmlComponent": "<form data-dynamic-stepper class=\"p-3\"><h4>Registro en 3 pasos</h4><ol data-dynamic-stepper-nav class=\"stepper-nav\"></ol><div data-dynamic-step=\"datos\" data-step-title=\"Tus datos\"><div class=\"mb-3\"><label class=\"form-label\" for=\"nombre\">Nombre</label><input id=\"nombre\" class=\"form-control\" /><div class=\"invalid-feedback\" data-error-for=\"nombre\"></div></div><div class=\"mb-3\"><label class=\"form-label\" for=\"correo\">Correo</label><input id=\"correo\" class=\"form-control\" /><div class=\"invalid-feedback\" data-error-for=\"correo\"></div></div></div><div data-dynamic-step=\"plan\" data-step-title=\"Plan\"><div class=\"mb-3\"><label class=\"form-label\" for=\"plan\">Plan</label><select id=\"plan\" class=\"form-select\"><option value=\"\">Elige un plan…</option><option value=\"basico\">Básico</option><option value=\"pro\">Pro</option></select><div class=\"invalid-feedback\" data-error-for=\"plan\"></div></div></div><div data-dynamic-step=\"confirmar\" data-step-title=\"Confirmar\"><p class=\"text-muted\">Revisa que todo esté bien y acepta los términos.</p><div class=\"form-check mb-3\"><input id=\"acepta\" type=\"checkbox\" class=\"form-check-input\" /><label class=\"form-check-label\" for=\"acepta\">Acepto los términos</label><div class=\"invalid-feedback d-block\" data-error-for=\"acepta\"></div></div></div><div class=\"d-flex justify-content-between mt-3\"><button type=\"button\" class=\"btn btn-outline-secondary\" data-dynamic-action=\"previous_step\" data-show-on-step=\"not-first\">Atrás</button><span></span><button type=\"button\" class=\"btn btn-primary\" data-dynamic-action=\"next_step\" data-show-on-step=\"not-last\">Siguiente</button><button type=\"submit\" class=\"btn btn-success\" data-show-on-step=\"last\">Enviar</button></div></form>",
+    "cssComponent": ".stepper-nav { display: flex; gap: 8px; list-style: none; padding: 0; margin: 16px 0; } .stepper-nav li { flex: 1; padding: 8px; border-bottom: 3px solid #dee2e6; color: #6c757d; } .stepper-nav li[data-step-state='active'] { border-color: #0d6efd; color: #0d6efd; font-weight: 600; } .stepper-nav li[data-step-state='completed'] { border-color: #198754; color: #198754; cursor: pointer; } .stepper-nav .step-index { display: inline-block; width: 1.6em; height: 1.6em; line-height: 1.6em; text-align: center; border-radius: 50%; background: currentColor; margin-right: 4px; }  .stepper-nav .step-index { -webkit-text-fill-color: #fff; }",
+    "formMappings": [
+      {
+        "controlName": "nombre",
+        "domSelector": "#nombre",
+        "errorDisplaySelector": "[data-error-for='nombre']",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "Escribe tu nombre"
+          }
+        ]
+      },
+      {
+        "controlName": "correo",
+        "domSelector": "#correo",
+        "errorDisplaySelector": "[data-error-for='correo']",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "Escribe tu correo"
+          },
+          {
+            "type": "email",
+            "message": "Correo inválido"
+          }
+        ]
+      },
+      {
+        "controlName": "plan",
+        "domSelector": "#plan",
+        "errorDisplaySelector": "[data-error-for='plan']",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "Elige un plan"
+          }
+        ]
+      },
+      {
+        "controlName": "acepta",
+        "domSelector": "#acepta",
+        "defaultValue": false,
+        "errorDisplaySelector": "[data-error-for='acepta']",
+        "validatorConfig": [
+          {
+            "type": "requiredTrue",
+            "message": "Debes aceptar los términos"
+          }
+        ]
+      }
+    ]
+  }
+]

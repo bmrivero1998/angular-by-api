@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { DomSanitizer } from '@angular/platform-browser';
+import { HttpErrorResponse } from '@angular/common/http';
 import { of, Subject } from 'rxjs';
 import { ApiDrivenContent } from '@ux-driven-viewer/engine';
 import { ContentChange, DynamicViewerService } from './dynamic-viewer.service';
@@ -669,5 +670,83 @@ describe('DynamicViewerService', () => {
     response$.next([section('a', 'static')]);
 
     expect(results[0].mode).toBe('unchanged');
+  });
+
+  // --- Página de error de una carga fallida ---
+  describe('página de error', () => {
+    const http = (status: number) => new HttpErrorResponse({ status });
+
+    it('si no hay contenido, pinta una sección static con la página del error y no cuenta como contenido', () => {
+      const change = service.showErrorPage(http(404));
+
+      expect(change).toEqual({ mode: 'initial', changedIds: ['ux-error-page'], issues: [] });
+      expect(ids()).toEqual(['ux-error-page']);
+      expect(service.getContentValue()[0].htmlComponent).toContain('404');
+      expect(service.isShowingErrorPage()).toBeTrue();
+      expect(service.hasContent()).toBeFalse();
+    });
+
+    it('elige la página según el error', () => {
+      service.showErrorPage(http(503));
+
+      expect(service.getContentValue()[0].htmlComponent).toContain('retry_load');
+    });
+
+    it('si ya hay contenido NO lo reemplaza: un fallo al volver a cargar no destruye la pantalla', () => {
+      service.setLocalContent([section('a', 'static')]);
+      const before = service.getContentValue();
+
+      const change = service.showErrorPage(http(500));
+
+      expect(change.mode).toBe('unchanged');
+      expect(service.getContentValue()).toBe(before);
+      expect(service.isShowingErrorPage()).toBeFalse();
+    });
+
+    it('el primer contenido real reemplaza a la página de error y cuenta como initial', () => {
+      service.showErrorPage(http(500));
+
+      const change = service.setLocalContent([section('a', 'static'), section('b', 'dynamic')]);
+
+      expect(change.mode).toBe('initial');
+      expect(ids()).toEqual(['a', 'b']);
+      expect(service.isShowingErrorPage()).toBeFalse();
+      expect(service.hasContent()).toBeTrue();
+    });
+
+    it('una vez cargado el contenido, volver a reenviarlo se compara con normalidad', () => {
+      service.showErrorPage(http(500));
+      service.setLocalContent([section('a', 'dynamic')]);
+
+      expect(service.setLocalContent([section('a', 'dynamic')]).mode).toBe('unchanged');
+    });
+
+    it('updateSections no se mezcla con la página de error', () => {
+      service.showErrorPage(http(500));
+
+      const change = service.updateSections([section('a', 'dynamic')]);
+
+      expect(ids()).toEqual(['a']);
+      expect(change.mode).toBe('initial');
+    });
+
+    it('una página de error vacía (contenido [] recibido) la deja como está', () => {
+      service.showErrorPage(http(500));
+
+      expect(service.setLocalContent([]).mode).toBe('unchanged');
+      expect(service.isShowingErrorPage()).toBeTrue();
+    });
+
+    it('clearContent la quita; un segundo error la vuelve a pintar como sección nueva', () => {
+      service.showErrorPage(http(500));
+      const keyBefore = keys()[0];
+
+      service.clearContent();
+      expect(service.isShowingErrorPage()).toBeFalse();
+      expect(ids()).toEqual([]);
+
+      service.showErrorPage(http(500));
+      expect(keys()[0]).not.toBe(keyBefore);
+    });
   });
 });

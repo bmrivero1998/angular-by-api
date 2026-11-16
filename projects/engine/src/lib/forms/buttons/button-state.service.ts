@@ -34,8 +34,11 @@ export class ButtonStateService {
       return this.evaluateControlCondition(form, condition, config.selector, onUnknownCondition);
     }
 
+    // Mientras algo está pendiente (una subida de archivo, un validador
+    // asíncrono) Angular no considera el formulario ni válido ni inválido.
+    // Para un botón de envío eso significa "todavía no": se deshabilita igual.
     const conditionMap: Record<string, boolean> = {
-      formIsInvalid: form.invalid,
+      formIsInvalid: form.invalid || form.pending,
       formIsValid: form.valid,
       formIsPristine: form.pristine,
       formIsDirty: form.dirty,
@@ -44,7 +47,7 @@ export class ButtonStateService {
       formIsPending: form.pending,
       alwaysDisable: true,
       neverDisable: false,
-      formIsInvalidOrPristine: form.invalid || form.pristine,
+      formIsInvalidOrPristine: form.invalid || form.pending || form.pristine,
       formIsEmpty: this.isFormEffectivelyEmpty(form),
       formIsNotEmpty: !this.isFormEffectivelyEmpty(form),
     };

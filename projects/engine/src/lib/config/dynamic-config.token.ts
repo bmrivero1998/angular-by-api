@@ -19,6 +19,14 @@ export interface DynamicLibraryConfig {
   clearHiddenFields?: boolean;      // Limpiar valores de campos ocultos
   emitVisibilityEvents?: boolean;   // Emitir eventos personalizados
 
+  // PETICIONES QUE PIDE EL JSON (subida de archivos, sugerencias de autocompletado)
+  /**
+   * Orígenes (ej. `https://files.miempresa.com`) a los que el contenido puede
+   * enviar datos del usuario, además de la página, de `apiUrl` y del `api-url`
+   * del widget. Una URL absoluta hacia otro origen se rechaza.
+   */
+  allowedOrigins?: string[];
+
 }
 
 export interface DefaultErrorMessages {

@@ -5,6 +5,65 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Añadido (formularios de varios pasos)
+
+- **Stepper dirigido por el HTML** de la sección, sin configuración aparte: `data-dynamic-stepper` en un contenedor, `data-dynamic-step="id"` en cada paso y botones con `data-dynamic-action="next_step"` / `"previous_step"`. Ver `docs/steppers.md`.
+- "Siguiente" **valida los campos del paso actual**: si alguno es inválido (o está pendiente) no avanza, muestra sus errores y enfoca el primero. "Atrás" no valida y conserva lo escrito.
+- Enter en un paso intermedio avanza en vez de enviar. Al enviar con un paso anterior inválido, el formulario **vuelve a ese paso** y muestra el error (también con varias secciones y con botones `submit_form`).
+- Indicador de pasos opcional (`data-dynamic-stepper-nav`) con `data-step-state` (`active`, `completed`, `pending`) y `aria-current`; clic en un paso ya alcanzado vuelve a él. `data-show-on-step` muestra u oculta botones según el paso.
+- Evento `stepChanged` (`formId`, `stepId`, `index`, `total`, `direction`, `completed`).
+- Se elimina el antiguo `DynamicStepperService` (nunca se usó): era un servicio de estado con callbacks, sin forma de describirse en un JSON ni de dibujarse.
+
+### Añadido (autocompletado)
+
+- `autoCompleteConfig.sourceUrl` (y `queryParam`): las sugerencias se piden a un endpoint mientras se escribe (`GET <sourceUrl>?q=<texto>`), con lo que el autocompletado dinámico ya se puede usar desde el JSON. Acepta textos u objetos `{ value, label }`.
+- Cada búsqueda cancela la anterior, `minChars` y `debounceTime` aceptan 0, con menos de `minChars` se vacía la lista y un fallo la deja vacía sin romper el campo.
+- La `source` como función (solo librería Angular) por fin muestra lo que devuelve: antes lo imprimía en consola. Antes tampoco estaba documentado.
+- Ejemplos `pasos.json` y `autocompletado.json`, y `GET /api/ciudades` en `npm run mock-api`.
+
+### Cambiado (orígenes de confianza)
+
+- Lo que el JSON puede pedir que se mande a una URL (los archivos de la subida y lo que el usuario escribe en el autocompletado) se rige por **una sola regla**: URL relativa, o absoluta del origen de la página, de `api-url` / `apiUrl`, de `allowed-origins` (widget) o de `allowedOrigins` (`DYNAMIC_CONFIG`). Cualquier otra falla sin hacer ninguna petición. Se exporta `resolveTrustedUrl`.
+
+### Añadido (subida de archivos)
+
+- **El motor ahora sube los archivos.** Con `fileUploadConfig.uploadUrl`, los archivos válidos se suben (multipart, una petición por archivo, en paralelo) apenas se eligen, con avance en `progressSelector`, lista de archivos en `fileListSelector` y el motivo de cualquier fallo en `errorDisplaySelector`. Al terminar, el valor del campo es la respuesta del servidor (un arreglo con varios archivos), y es lo que recibe `formSubmit`. Antes solo se validaba y se avisaba con `fileSelected`; la subida era cosa del host, que sigue pudiendo hacerla si no indica `uploadUrl`. Ver `docs/file-upload.md`.
+- Evento `fileUploadChanged` (`status`: `uploading`, `done` o `error`, con `progress`, `result` y `error`).
+- `method` (`POST` o `PUT`) y `fieldName` en `fileUploadConfig`.
+- **La URL de subida no se confía a ciegas.** Una URL absoluta solo se acepta si su origen es el de la página, el de `api-url` / `apiUrl` o uno declarado en `allowed-origins` (widget) o `allowedOrigins` (`DYNAMIC_CONFIG`); cualquier otra falla sin hacer ninguna petición.
+- `FileUploadTransferService` en la API pública de la librería.
+- Ejemplo `examples/schemas/archivos.json`, API de prueba `npm run mock-api` y proxy del playground.
+
+### Corregido (subida de archivos)
+
+- Mientras un archivo sube, un botón con `formIsInvalid` o `formIsInvalidOrPristine` seguía **habilitado**: Angular no considera un formulario pendiente ni válido ni inválido. Ahora ambas condiciones deshabilitan el botón también mientras haya algo pendiente (una subida o un validador asíncrono).
+- Enviar el formulario mientras algo está pendiente ya no se confunde con un formulario inválido: no se envía y se explica por qué.
+- `maxCount` estaba documentado pero no existía en el tipo `FileUploadConfig`, que además estaba definido dos veces.
+- Un error de un campo que trae su propio texto (el de una subida) se muestra en `errorDisplaySelector`.
+- `ButtonStateService` no tenía pruebas.
+
+### Añadido (errores de carga)
+
+- **Página de error** cuando falla la primera carga por `api-url`: 404, sin acceso (401/403), servicio no disponible (sin red, 408, 429, 5xx) y error genérico. Los dos últimos ofrecen "Reintentar", que vuelve a pedir el contenido. Usa estilos propios, sin depender de Bootstrap ni de fuentes de iconos. Ver `docs/errors.md`.
+- Atributo `show-error-page` (por defecto `true`): con `"false"` solo se emite `errorOccurred`, para que el host muestre su propia página.
+- `errorOccurred` incluye el código HTTP: `Error cargando configuración dinámica (HTTP 404)`.
+
+### Cambiado (errores de carga)
+
+- Un fallo al **volver a cargar** (`refresh()`) con la pantalla ya funcionando no la reemplaza por una página de error: solo se informa.
+- Se elimina `MockErrorHandlerInterceptor`. Nunca estuvo registrado, y de haberlo estado habría convertido **cualquier** error HTTP de la aplicación en una respuesta `200` falsa, también el de un validador asíncrono (un `500` en `/check-username` se habría leído como "usuario ya tomado"). Los fallos de carga se resuelven ahora de forma explícita, solo para el contenido de la pantalla.
+
+### Corregido (acciones)
+
+- Una acción con "modal" en el nombre (`open_modal`, `show_modal_help`, `modal_confirm`) **ya no se confunde con cerrar un modal ni se traga**: antes cerraba el modal y el host nunca la recibía, lo que hacía imposible abrir un modal desde una acción.
+- Las acciones integradas se reconocen por **palabras completas** (`close_modal`, `close-modal` y `closeModal` son lo mismo) y no por texto suelto: `reset_password` ya no vacía el formulario, `resubmit_later` ya no envía nada y `disclose` ya no cierra un modal. Aplica al widget y al marco del modal.
+- Las acciones de cerrar y de vaciar el formulario ahora **también se reportan al host** como `actionTriggered`, además de ejecutarse. `submit` sigue sin reportarse como acción (llega `formSubmit`). Ver `docs/events.md`.
+- Los atributos HTML del elemento llegaban como texto: `show-back-to-top="false"` seguía mostrando el botón (el texto "false" cuenta como verdadero) y `debug="false"` activaba el modo debug. Ahora los booleanos y los números se convierten (`scroll-offset`, `grid-gap`, `back-to-top-threshold`, `form-state-debounce`).
+
+### Documentación
+
+- Se documenta que los listeners de los eventos de la primera carga deben registrarse antes del `<script>` del widget, para no perderlos si el servidor responde muy rápido.
+
 ### Cambiado (carga y actualización de contenido)
 
 - **`static` y `dynamic` ahora significan cómo se actualiza una sección**, no dónde se pinta. Al recibir contenido, el widget lo compara por `id_DocumentHTMLCSS` contra lo que tiene en memoria: si cambia una sección `static` se recarga toda la pantalla; si cambian solo secciones `dynamic` se actualiza únicamente cada una, y las demás conservan su componente y lo que el usuario escribió; si no cambia nada, no se toca nada. Ver `docs/updating-content.md`.

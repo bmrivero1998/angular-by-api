@@ -45,6 +45,9 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | [Primeros pasos](docs/getting-started.md) | Instalación en un host, atributos del elemento, requisitos. |
 | [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación. |
 | [Actualizar el contenido](docs/updating-content.md) | `static` vs `dynamic`, `updateSections`, `refresh`, `contentUpdated`. |
+| [Formularios de varios pasos](docs/steppers.md) | `data-dynamic-stepper`, validación por paso, indicador, `stepChanged`. |
+| [Subida de archivos](docs/file-upload.md) | `fileUploadConfig`, subida con avance, resultado en el formulario, orígenes permitidos. |
+| [Errores de carga](docs/errors.md) | Páginas de error, "Reintentar", `show-error-page`, `errorOccurred`. |
 | [Validadores y controles](docs/validators.md) | `formMappings`, validadores, `keyFilter`, máscaras, archivos. |
 | [Lógica condicional](docs/conditional-logic.md) | `showIf` / `hideIf`. |
 | [Eventos](docs/events.md) | Qué emite el widget y con qué datos. |
@@ -78,6 +81,7 @@ npm install
 npm start              # playground en http://localhost:4200
 npm run build          # librería (dist/engine) + widget (dist/elements/ux-driven-viewer.js)
 npm run test:ci        # todas las pruebas, una sola pasada
+npm run mock-api       # API de prueba para la subida de archivos (puerto 3001)
 ```
 
 El playground carga los esquemas de `examples/schemas` y muestra en vivo los eventos que emite el widget.
@@ -86,7 +90,9 @@ Más detalle en la [guía de contribución](CONTRIBUTING.md).
 
 ## Estado del proyecto
 
-En estabilización. La estructura y el formato del JSON están definidos; quedan correcciones pendientes en las páginas de error de la carga de contenido y en las acciones que abren o cierran modales.
+En estabilización. La estructura y el formato del JSON están definidos y los problemas detectados en la revisión inicial (formularios, lógica condicional, CSS, carga de contenido, acciones, subida de archivos) están corregidos. Funcionalidades incluidas: formularios con validación y máscaras, lógica condicional, formularios de varios pasos, subida de archivos, autocompletado, páginas de error y actualización parcial de contenido.
+
+Queda código sin uso: el loader, los toasts y su `LoaderInterceptor`, la navegación y el registro de componentes (en `projects/engine/src/lib/experimental`), y `HtmlSanitizerInterceptor`, que no se registra por defecto.
 
 ## Contribuir
 

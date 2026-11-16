@@ -11,6 +11,9 @@ import '../../runtime/src/main';
 /** Esquemas servidos desde examples/schemas (ver `assets` en angular.json). */
 const EXAMPLES: Record<string, string> = {
   'Static y dynamic (actualizar secciones)': 'schemas/secciones.json',
+  'Formulario de varios pasos': 'schemas/pasos.json',
+  'Autocompletado (necesita npm run mock-api)': 'schemas/autocompletado.json',
+  'Subida de archivos (necesita npm run mock-api)': 'schemas/archivos.json',
   'Landing estática': 'schemas/landing.json',
   'Formulario básico': 'schemas/formulario-basico.json',
   'Formulario completo': 'schemas/formulario-completo.json',
@@ -26,6 +29,8 @@ const WIDGET_EVENTS = [
   'controlChanged',
   'formStateChanged',
   'contentUpdated',
+  'fileUploadChanged',
+  'stepChanged',
 ];
 
 interface Section {

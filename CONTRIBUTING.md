@@ -50,6 +50,7 @@ npm run build              # ambos
 npm run test:engine        # tests de la librería (modo watch)
 npm run test:runtime       # tests del runtime (modo watch)
 npm run test:ci            # ambas suites, una sola pasada, headless
+npm run mock-api           # API de prueba para la subida de archivos del playground (puerto 3001)
 ```
 
 ### Cómo se empaqueta el widget
