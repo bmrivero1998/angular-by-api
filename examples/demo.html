@@ -12,6 +12,7 @@
 <body><div class="container py-4">
  <h1 class="h3 mb-1">Prueba de <code>&lt;ux-driven-viewer&gt;</code></h1>
  <p class="text-muted">Widget cargado desde <code>ux-driven-viewer.khiemdoh.com</code>. Elige un ejemplo; el JSON se le pasa al elemento y a la derecha ves los eventos que emite.</p>
+ <div id="warn" class="alert alert-danger d-none"></div>
  <div class="row g-3">
   <div class="col-lg-8">
    <div class="panel mb-3 d-flex flex-wrap gap-2 align-items-center">
@@ -47,5 +48,9 @@ document.getElementById('sta').onclick=()=>change('static');
 document.getElementById('clear').onclick=()=>log.replaceChildren();
 </script>
 <script src="https://ux-driven-viewer.khiemdoh.com/ux-driven-viewer.js"></script>
+<script>
+setTimeout(()=>{if(!customElements.get('ux-driven-viewer')){const w=document.getElementById('warn');w.classList.remove('d-none');
+w.textContent='No se pudo cargar el widget desde ux-driven-viewer.khiemdoh.com (sin red, bloqueado o el sitio no responde). Ábrelo en tu navegador normal; si sigue igual, abre la consola (F12) y revisa el error.'}},4000);
+</script>
 <script>customElements.whenDefined('ux-driven-viewer').then(load)</script>
 </body></html>
