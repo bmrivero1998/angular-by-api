@@ -4,8 +4,8 @@
   "compileOnSave": false,
   "compilerOptions": {
     "paths": {
-      "dynamic-forms-engine": [
-        "./dist/dynamic-forms-engine"
+      "@ux-driven-viewer/engine": [
+        "./projects/engine/src/public-api.ts"
       ]
     },
     "outDir": "./dist/out-tsc",

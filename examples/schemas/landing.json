@@ -1,0 +1,24 @@
+[
+  {
+    "id_DocumentHTMLCSS": "landing-demo-nav",
+    "renderType": "static",
+    "htmlComponent": "<nav class=\"navbar navbar-expand bg-dark navbar-dark px-3\"><a class=\"navbar-brand\" href=\"#\">Mi Marca</a><div class=\"navbar-nav\"><a class=\"nav-link\" href=\"#servicios\">Servicios</a><a class=\"nav-link\" href=\"#contacto\">Contacto</a></div></nav>",
+    "cssComponent": ".dynamic-landing-demo-nav .navbar-brand { font-weight: 700; }"
+  },
+  {
+    "id_DocumentHTMLCSS": "landing-demo",
+    "renderType": "static",
+    "htmlComponent": "<section id=\"hero\" class=\"hero text-center\"><h1 id=\"hero_title\"></h1><p class=\"lead\">Contenido renderizado desde un JSON.</p><button type=\"button\" class=\"btn btn-primary\" data-dynamic-action=\"cta_click\" data-plan-name=\"VIP\">Quiero saber más</button></section><section id=\"servicios\" class=\"block\"><h2>Servicios</h2><p>Sección destino del ancla #servicios.</p></section><section id=\"contacto\" class=\"block\"><h2>Contacto</h2><p>Sección destino del ancla #contacto. © <span id=\"footer_year\"></span></p></section>",
+    "cssComponent": ".dynamic-landing-demo .hero { padding: 96px 16px; background: #f1f5f9; }\n.dynamic-landing-demo .block { padding: 320px 16px; }",
+    "dataBindings": [
+      {
+        "selector": "#hero_title",
+        "value": "Landing de ejemplo"
+      },
+      {
+        "selector": "#footer_year",
+        "value": "2026"
+      }
+    ]
+  }
+]

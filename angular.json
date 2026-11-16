@@ -3,34 +3,60 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "angular-by-api": {
+    "engine": {
+      "projectType": "library",
+      "root": "projects/engine",
+      "sourceRoot": "projects/engine/src",
+      "prefix": "lib",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "options": {
+            "project": "projects/engine/ng-package.json"
+          },
+          "configurations": {
+            "production": {
+              "tsConfig": "projects/engine/tsconfig.lib.prod.json"
+            },
+            "development": {
+              "tsConfig": "projects/engine/tsconfig.lib.json"
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "test": {
+          "builder": "@angular-devkit/build-angular:karma",
+          "options": {
+            "tsConfig": "projects/engine/tsconfig.spec.json",
+            "karmaConfig": "karma.conf.js",
+            "polyfills": [
+              "zone.js",
+              "zone.js/testing"
+            ]
+          }
+        }
+      }
+    },
+    "runtime": {
       "projectType": "application",
       "schematics": {},
-      "root": "",
-      "sourceRoot": "src",
+      "root": "projects/runtime",
+      "sourceRoot": "projects/runtime/src",
       "prefix": "app",
       "architect": {
         "build": {
           "builder": "ngx-build-plus:browser",
           "options": {
-            "outputPath": "dist/dynamic-forms-engine",
-            "index": "src/index.html",
-            "main": "src/main.ts",
+            "outputPath": "dist/runtime",
+            "index": "projects/runtime/src/index.html",
+            "main": "projects/runtime/src/main.ts",
             "polyfills": [
               "zone.js"
             ],
-            "tsConfig": "tsconfig.app.json",
-            "allowedCommonJsDependencies": [
-              "crypto-js"
-            ],
-            "assets": [
-              {
-                "glob": "**/*",
-                "input": "public"
-              }
-            ],
+            "tsConfig": "projects/runtime/tsconfig.app.json",
+            "assets": [],
             "styles": [
-              "src/styles.css"
+              "projects/runtime/src/styles.css"
             ],
             "scripts": []
           },
@@ -62,16 +88,13 @@
           "builder": "ngx-build-plus:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "angular-by-api:build:production"
+              "buildTarget": "runtime:build:production"
             },
             "development": {
-              "buildTarget": "angular-by-api:build:development"
+              "buildTarget": "runtime:build:development"
             }
           },
           "defaultConfiguration": "development"
-        },
-        "extract-i18n": {
-          "builder": "ngx-build-plus:extract-i18n"
         },
         "test": {
           "builder": "ngx-build-plus:karma",
@@ -80,16 +103,11 @@
               "zone.js",
               "zone.js/testing"
             ],
-            "tsConfig": "tsconfig.spec.json",
-            "assets": [
-              {
-                "glob": "**/*",
-                "input": "public"
-              }
-            ],
+            "tsConfig": "projects/runtime/tsconfig.spec.json",
+            "karmaConfig": "karma.conf.js",
             "styles": [
               "node_modules/bootstrap/dist/css/bootstrap.min.css",
-              "src/styles.css"
+              "projects/runtime/src/styles.css"
             ],
             "scripts": [
               "node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"
@@ -98,36 +116,77 @@
         }
       }
     },
-    "dynamic-forms-engine": {
-      "projectType": "library",
-      "root": "projects/dynamic-forms-engine",
-      "sourceRoot": "projects/dynamic-forms-engine/src",
-      "prefix": "lib",
+    "playground": {
+      "projectType": "application",
+      "schematics": {},
+      "root": "projects/playground",
+      "sourceRoot": "projects/playground/src",
+      "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:ng-packagr",
+          "builder": "ngx-build-plus:browser",
           "options": {
-            "project": "projects/dynamic-forms-engine/ng-package.json"
+            "outputPath": "dist/playground",
+            "index": "projects/playground/src/index.html",
+            "main": "projects/playground/src/main.ts",
+            "polyfills": [
+              "zone.js"
+            ],
+            "tsConfig": "projects/playground/tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "favicon.ico",
+                "input": "projects/playground/src"
+              },
+              {
+                "glob": "**/*.json",
+                "input": "examples/schemas",
+                "output": "schemas"
+              }
+            ],
+            "styles": [
+              "node_modules/bootstrap/dist/css/bootstrap.min.css",
+              "projects/playground/src/styles.css"
+            ],
+            "scripts": [
+              "node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"
+            ]
           },
           "configurations": {
             "production": {
-              "tsConfig": "projects/dynamic-forms-engine/tsconfig.lib.prod.json"
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "2MB",
+                  "maximumError": "4MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "300kB",
+                  "maximumError": "500kB"
+                }
+              ],
+              "outputHashing": "all"
             },
             "development": {
-              "tsConfig": "projects/dynamic-forms-engine/tsconfig.lib.json"
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
             }
           },
           "defaultConfiguration": "production"
         },
-        "test": {
-          "builder": "@angular-devkit/build-angular:karma",
-          "options": {
-            "tsConfig": "projects/dynamic-forms-engine/tsconfig.spec.json",
-            "polyfills": [
-              "zone.js",
-              "zone.js/testing"
-            ]
-          }
+        "serve": {
+          "builder": "ngx-build-plus:dev-server",
+          "configurations": {
+            "production": {
+              "buildTarget": "playground:build:production"
+            },
+            "development": {
+              "buildTarget": "playground:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
         }
       }
     }

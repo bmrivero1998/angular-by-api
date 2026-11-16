@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>ux-driven-viewer · playground</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  </head>
+  <body>
+    <header class="pg-bar">
+      <strong>ux-driven-viewer</strong>
+      <label for="pg-example">Ejemplo</label>
+      <select id="pg-example"></select>
+      <span id="pg-status" role="status"></span>
+    </header>
+
+    <main class="pg-stage">
+      <ux-driven-viewer id="pg-viewer" debug="false"></ux-driven-viewer>
+    </main>
+
+    <aside class="pg-log" aria-label="Eventos emitidos por el widget">
+      <div class="pg-log-head">
+        <span>Eventos</span>
+        <button id="pg-clear" type="button">Limpiar</button>
+      </div>
+      <ol id="pg-events"></ol>
+    </aside>
+  </body>
+</html>
