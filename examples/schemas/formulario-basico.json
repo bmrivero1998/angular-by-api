@@ -28,7 +28,7 @@
       },
       {
         "controlName": "codigoVip",
-        "domSelector": "#seccion-vip",
+        "domSelector": "input[name=\"codigoVip\"]",
         "showIf": "form.mostrarExtra === true",
         "validatorConfig": [
           {

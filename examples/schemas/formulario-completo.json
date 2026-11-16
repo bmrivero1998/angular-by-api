@@ -35,7 +35,7 @@
       },
       {
         "controlName": "codigoVip",
-        "domSelector": "#seccionPremium",
+        "domSelector": "input[name=\"codigoVip\"]",
         "showIf": "form.tipoCuenta === 'premium'",
         "validatorConfig": [
           {

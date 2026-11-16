@@ -5,6 +5,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Corregido (lógica condicional)
+
+- `showIf` / `hideIf` aceptan los literales `true`, `false` y `null` (`acepta === true`) y el prefijo `form.` (`form.tipo === 'premium'`). Antes lanzaban `SyntaxError` y el campo quedaba oculto para siempre; los ejemplos de la demo no funcionaban.
+- Las expresiones ya no se ejecutan con `new Function`: se analizan con un evaluador propio de lenguaje reducido. Dejan de requerir `unsafe-eval` en la CSP del host y de poder acceder a `constructor` / `prototype`.
+- Ocultar o mostrar un campo actualiza la validez del formulario, la del formulario padre y el estado de los botones. Antes un campo obligatorio oculto seguía bloqueando el envío, y el input rehabilitado podía quedar deshabilitado en el DOM.
+- Un campo que el host deshabilitó por su cuenta, o con `alwaysDisabled`, ya no se rehabilita al mostrarse.
+- La evaluación inicial es síncrona y ocurre cuando los controles ya tienen su valor inicial: el campo oculto nunca llega a pintarse, y una condición sobre un checkbox `checked` del HTML se evalúa bien.
+- El contenedor a ocultar se elige por el ancestro más cercano y no por el primero de una lista fija, y nunca incluye a otros campos del formulario. Se dejan de considerar `.card-body`, `[id*="section"]`, `[id*="group"]` y `.row > div`, que podían ocultar la tarjeta entera.
+- Un mapping sobre un elemento sin valor (p. ej. un contenedor) ya no vacía el control con cada tecla que se escribe en sus hijos.
+- Los ejemplos de `examples/schemas` mapeaban el campo VIP a su contenedor en vez de al `<input>`.
+
 ### Corregido
 
 - Los errores de validación ahora se muestran al escribir, al salir del campo y tras un intento de envío inválido. Antes los campos nunca se marcaban como `dirty` ni `touched`, así que no aparecía ningún error.
@@ -21,6 +32,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Cambiado (afecta a quien consume el widget)
 
+- Una expresión `showIf` / `hideIf` inválida deja el campo **visible** y se informa una vez en consola. Antes lo ocultaba en silencio.
+- Un campo oculto por la lógica condicional queda deshabilitado y fuera de `value` del formulario, y al ocultarse o mostrarse emite eventos de estado (`controlChanged`, `formStateChanged`).
 - `formSubmit` tiene una sola forma: `{ [formId]: { campo: valor } }`, con todos los formularios de la página. Antes, el envío con Enter emitía solo los campos de una sección, sin agrupar.
 - `required` considera vacío un checkbox sin marcar.
 - El motor añade `novalidate` a los `<form>` inyectados.

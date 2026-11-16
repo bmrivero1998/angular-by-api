@@ -486,4 +486,117 @@ describe('DynamicViewerComponent (integración de formularios)', () => {
       expect(event.defaultPrevented).toBeTrue();
     });
   });
+
+  describe('lógica condicional', () => {
+    const VIP_HTML = `
+      <form>
+        <div class="mb-3"><input id="tieneVip" type="checkbox"></div>
+        <div class="mb-3" id="vipWrap"><input id="vip" class="form-control"></div>
+        <button id="send" type="submit">Enviar</button>
+      </form>`;
+    const VIP_MAPPINGS: FormFieldMapping[] = [
+      { controlName: 'tieneVip', domSelector: '#tieneVip', defaultValue: false },
+      {
+        controlName: 'vip',
+        domSelector: '#vip',
+        showIf: 'form.tieneVip === true',
+        validatorConfig: [{ type: 'required', message: 'El código VIP es obligatorio' }],
+      },
+    ];
+    const vipWrap = () => el<HTMLElement>('#vipWrap');
+
+    it('el campo condicional nace oculto en el primer pintado, sin esperar a un timer', () => {
+      render(VIP_HTML, VIP_MAPPINGS);
+
+      expect(vipWrap().style.display).toBe('none');
+      expect(vipWrap().getAttribute('aria-hidden')).toBe('true');
+    });
+
+    it('lo muestra al marcar el checkbox, con el input habilitado, y lo oculta al desmarcar', fakeAsync(() => {
+      render(VIP_HTML, VIP_MAPPINGS);
+
+      toggle('#tieneVip', true);
+      tick(60);
+      expect(vipWrap().style.display).not.toBe('none');
+      expect(el('#vip').disabled).toBeFalse();
+
+      toggle('#tieneVip', false);
+      tick(60);
+      expect(vipWrap().style.display).toBe('none');
+      expect(el('#vip').disabled).toBeTrue();
+    }));
+
+    it('un campo obligatorio oculto no bloquea el envío, y al mostrarse sí', fakeAsync(() => {
+      render(VIP_HTML, VIP_MAPPINGS);
+      const submitted = jasmine.createSpy('formSubmitted');
+      component.formSubmitted.subscribe(submitted);
+
+      component.triggerSubmit();
+      expect(submitted).toHaveBeenCalledTimes(1);
+
+      toggle('#tieneVip', true);
+      tick(60);
+      component.triggerSubmit();
+      expect(submitted).toHaveBeenCalledTimes(1);
+      expect(el('#vip').classList).toContain('is-invalid');
+    }));
+
+    it('actualiza el estado del botón al ocultar o mostrar un campo obligatorio', fakeAsync(() => {
+      render(VIP_HTML, VIP_MAPPINGS, [{ selector: '#send', disableWhen: 'formIsInvalid' }]);
+      expect(el<HTMLButtonElement>('#send').disabled).toBeFalse();
+
+      toggle('#tieneVip', true);
+      tick(60);
+      expect(el<HTMLButtonElement>('#send').disabled).toBeTrue();
+
+      toggle('#tieneVip', false);
+      tick(60);
+      expect(el<HTMLButtonElement>('#send').disabled).toBeFalse();
+    }));
+
+    it('evalúa la condición con el valor que ya trae el HTML (checkbox checked)', () => {
+      render(VIP_HTML.replace('id="tieneVip" type="checkbox"', 'id="tieneVip" type="checkbox" checked'), [
+        { controlName: 'tieneVip', domSelector: '#tieneVip' },
+        VIP_MAPPINGS[1],
+      ]);
+
+      expect(vipWrap().style.display).not.toBe('none');
+    });
+
+    it('el campo oculto queda fuera de `value`, aunque getRawValue siga viéndolo', () => {
+      render(VIP_HTML, VIP_MAPPINGS);
+
+      expect(component.dynamicForm.value).toEqual({ tieneVip: false });
+      expect(component.getFormValues()).toEqual({ tieneVip: false, vip: '' });
+    });
+
+    it('un select dirige la condición con === sobre texto', fakeAsync(() => {
+      render(
+        `<select id="tipo"><option value="estandar" selected>E</option><option value="premium">P</option></select>
+         <div class="mb-3" id="extraWrap"><input id="extra"></div>`,
+        [
+          { controlName: 'tipo', domSelector: '#tipo' },
+          { controlName: 'extra', domSelector: '#extra', showIf: "tipo === 'premium'" },
+        ],
+      );
+      expect(el<HTMLElement>('#extraWrap').style.display).toBe('none');
+
+      const select = el<HTMLSelectElement>('#tipo');
+      select.value = 'premium';
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      tick(60);
+
+      expect(el<HTMLElement>('#extraWrap').style.display).not.toBe('none');
+    }));
+
+    it('una expresión inválida no oculta el campo ni rompe el formulario', () => {
+      spyOn(console, 'error');
+      render(`<div class="mb-3" id="w"><input id="x"></div>`, [
+        { controlName: 'x', domSelector: '#x', showIf: 'a ===' },
+      ]);
+
+      expect(el<HTMLElement>('#w').style.display).not.toBe('none');
+      expect(console.error).toHaveBeenCalled();
+    });
+  });
 });

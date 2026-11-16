@@ -3,22 +3,38 @@ import { AbstractControl, FormGroup } from '@angular/forms';
 import { Subscription, debounceTime } from 'rxjs';
 import { FormFieldMapping } from '../../models/form-field-mapping.model';
 import { DYNAMIC_CONFIG } from '../../config/dynamic-config.token';
+import {
+  ExpressionError,
+  ExpressionFunction,
+  ExpressionNode,
+  ExpressionScope,
+  evaluateNode,
+  parseExpression,
+} from './expression-evaluator';
 
-const VISIBILITY_CONTAINER_SELECTORS = [
-  '.form-group',
-  '.input-group',
-  '.col-md-6', '.col-12', '.col-sm-6', '.col-lg-4',
-  '.mb-3', '.mb-4',
-  '.field-container',
-  '[id*="section"]',
-  '[id*="group"]',
-  '.card-body',
-  '.row > div',
-];
+/**
+ * Contenedores habituales de un campo, de más específico a más genérico. Se
+ * usan SOLO si el mapping no declara `visibilityGroup`.
+ */
+const FIELD_WRAPPER_SELECTORS = ['.form-group', '.input-group', '.field-container', '.mb-3', '.mb-4'];
+
+/** `col`, `col-6`, `col-md-4`... pero no `col-form-label`. */
+const COLUMN_CLASS = /^col(-(sm|md|lg|xl|xxl))?(-\d{1,2}|-auto)?$/;
+
+/** Contexto opcional para elegir bien qué ocultar (ver `findVisibilityTarget`). */
+export interface VisibilityContext {
+  /** Raíz del contenido inyectado: nunca se oculta ni se sale de ella. */
+  container: HTMLElement;
+  /** Todos los mappings del formulario, para no ocultar campos ajenos. */
+  mappings: FormFieldMapping[];
+}
 
 /**
  * Motor de lógica condicional del formulario: evalúa `showIf`/`hideIf` sobre
  * el FormGroup y aplica (o retira) la visibilidad de los campos en el DOM.
+ *
+ * Las expresiones se analizan con un evaluador propio (ver
+ * `expression-evaluator.ts`); no se ejecutan como JavaScript.
  */
 @Injectable({
   providedIn: 'root',
@@ -27,14 +43,21 @@ export class FormConditionalLogicService {
   private renderer: Renderer2;
   private config = inject(DYNAMIC_CONFIG, { optional: true });
 
+  /** Expresiones ya analizadas (o el error de analizarlas), por texto. */
+  private readonly compiled = new Map<string, ExpressionNode | ExpressionError>();
+  /** Errores ya informados, para no repetir el mismo mensaje en cada tecla. */
+  private readonly reportedErrors = new Set<string>();
+
   constructor(rendererFactory: RendererFactory2) {
     this.renderer = rendererFactory.createRenderer(null, null);
   }
 
   /**
-   * Suscribe el FormGroup para reevaluar visibilidad ante cada cambio y
-   * aplica el estado inicial. Devuelve la suscripción para que el llamador
-   * la administre.
+   * Evalúa la visibilidad ahora mismo y vuelve a evaluarla ante cada cambio
+   * del FormGroup. Devuelve la suscripción para que el llamador la administre.
+   *
+   * Llamar DESPUÉS de que los controles tengan su valor inicial: la primera
+   * evaluación es síncrona (así el contenido oculto nunca llega a pintarse).
    */
   public setupConditionalLogic(
     formGroup: FormGroup,
@@ -48,94 +71,154 @@ export class FormConditionalLogicService {
       return logicSubscription;
     }
 
+    // Controles que ESTE motor deshabilitó al ocultarlos. Solo esos se
+    // rehabilitan al mostrarse: uno que el host deshabilitó por su cuenta
+    // debe seguir deshabilitado.
+    const disabledByLogic = new Set<AbstractControl>();
+
     const evaluateAndApplyVisibility = () => {
-      const formValues = formGroup.getRawValue();
+      const scope = this.buildScope(formGroup);
 
       conditionalMappings.forEach((mapping) => {
         const control = formGroup.get(mapping.controlName);
         if (!control) return;
 
-        const element = container.querySelector(mapping.domSelector) as HTMLElement;
+        const element = container.querySelector(mapping.domSelector) as HTMLElement | null;
         if (!element) return;
 
-        const target = this.findVisibilityTarget(element, mapping);
+        const target = this.findVisibilityTarget(element, mapping, { container, mappings });
         if (!target) return;
 
-        let shouldBeVisible = true;
-        if (mapping.showIf) {
-          shouldBeVisible = this.evaluateExpression(mapping.showIf, formValues, formGroup);
-        } else if (mapping.hideIf) {
-          shouldBeVisible = !this.evaluateExpression(mapping.hideIf, formValues, formGroup);
-        }
-
-        this.applyVisibility(control, target, shouldBeVisible, mapping);
+        this.applyVisibility(control, target, this.shouldBeVisible(mapping, scope), mapping, disabledByLogic);
       });
     };
 
+    evaluateAndApplyVisibility();
+
     logicSubscription.add(
       formGroup.valueChanges
-        .pipe(debounceTime(this.config?.conditionalDebounceTime || 50))
+        .pipe(debounceTime(this.config?.conditionalDebounceTime ?? 50))
         .subscribe(() => evaluateAndApplyVisibility()),
     );
-
-    setTimeout(() => evaluateAndApplyVisibility(), 0);
 
     return logicSubscription;
   }
 
   /**
-   * Encuentra el elemento objetivo para aplicar visibilidad
+   * Encuentra el elemento a ocultar para un campo. Orden:
+   *
+   * 1. El ancestro con `data-visibility-group` igual al `visibilityGroup` del
+   *    mapping. Es la forma recomendada: el autor decide qué se oculta.
+   * 2. El contenedor de campo más cercano (`.form-group`, `.mb-3`...), que se
+   *    amplía a su columna (`.col-*`) si esa columna no tiene nada más. Se
+   *    descarta un contenedor que incluya OTROS campos del formulario: ocultar
+   *    un campo nunca debe ocultar a sus vecinos.
+   * 3. El propio elemento.
+   *
+   * Si se omite `context` no se hace la comprobación de campos vecinos.
    */
-  public findVisibilityTarget(element: HTMLElement, mapping: FormFieldMapping): HTMLElement | null {
-    // Prioridad: selector personalizado > group > contenedores comunes > elemento mismo
+  public findVisibilityTarget(
+    element: HTMLElement,
+    mapping: FormFieldMapping,
+    context?: VisibilityContext,
+  ): HTMLElement | null {
     if (mapping.visibilityGroup) {
       const groupElement = element.closest(`[data-visibility-group="${mapping.visibilityGroup}"]`);
       if (groupElement) return groupElement as HTMLElement;
     }
 
-    for (const selector of VISIBILITY_CONTAINER_SELECTORS) {
-      const container = element.closest(selector);
-      if (container) {
-        return container as HTMLElement;
+    const root = context?.container;
+    let wrapper: HTMLElement | null = null;
+
+    for (let node: HTMLElement | null = element; node && node !== root; node = node.parentElement) {
+      if (!this.isFieldWrapper(node)) continue;
+
+      // Si el elemento mapeado ES el contenedor, el autor lo eligió: se respeta.
+      if (node === element || !this.containsOtherFields(node, element, mapping, context)) {
+        wrapper = node;
+        break;
       }
     }
 
-    return element;
+    if (!wrapper) return element;
+
+    // Una columna que solo contiene este campo se oculta entera para no dejar un hueco.
+    while (wrapper.parentElement && wrapper.parentElement !== root) {
+      const parent: HTMLElement = wrapper.parentElement;
+      if (!this.isColumn(parent) || parent.childElementCount !== 1) break;
+      wrapper = parent;
+    }
+
+    return wrapper;
   }
 
-  /**
-   * Aplica visibilidad al elemento
-   */
+  private isFieldWrapper(node: HTMLElement): boolean {
+    return this.isColumn(node) || FIELD_WRAPPER_SELECTORS.some((selector) => node.matches(selector));
+  }
+
+  private isColumn(node: HTMLElement): boolean {
+    return Array.from(node.classList).some((className) => COLUMN_CLASS.test(className));
+  }
+
+  /** ¿`candidate` contiene el elemento de algún campo que no sea este? */
+  private containsOtherFields(
+    candidate: HTMLElement,
+    element: HTMLElement,
+    mapping: FormFieldMapping,
+    context?: VisibilityContext,
+  ): boolean {
+    if (!context) return false;
+
+    return context.mappings.some((other) => {
+      if (other === mapping || other.domSelector === mapping.domSelector) return false;
+      try {
+        return Array.from(candidate.querySelectorAll(other.domSelector)).some(
+          (found) => found !== element && !element.contains(found),
+        );
+      } catch {
+        return false; // selector inválido en la configuración
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Visibilidad
+  // ---------------------------------------------------------------------------
+
   private applyVisibility(
     control: AbstractControl,
     element: HTMLElement,
     shouldBeVisible: boolean,
     mapping: FormFieldMapping,
+    disabledByLogic: Set<AbstractControl>,
   ): void {
     const currentlyVisible = element.style.display !== 'none';
 
     if (shouldBeVisible === currentlyVisible) return;
 
+    // enable()/disable() emiten eventos a propósito: así el DOM del campo, la
+    // validez del formulario y los botones se actualizan. Un campo oculto
+    // obligatorio no debe seguir bloqueando el envío.
     if (shouldBeVisible) {
       this.renderer.removeStyle(element, 'display');
       this.renderer.removeClass(element, 'hidden');
       this.renderer.removeClass(element, 'd-none');
       this.renderer.setAttribute(element, 'aria-hidden', 'false');
 
-      if (control.disabled && !mapping.alwaysDisabled) {
-        control.enable({ emitEvent: false, onlySelf: true });
+      if (disabledByLogic.delete(control) && !mapping.alwaysDisabled) {
+        control.enable();
       }
     } else {
       this.renderer.setStyle(element, 'display', 'none');
       this.renderer.addClass(element, 'hidden');
       this.renderer.setAttribute(element, 'aria-hidden', 'true');
 
-      if (control.enabled) {
-        control.disable({ emitEvent: false, onlySelf: true });
-      }
-
       if (this.config?.clearHiddenFields) {
         control.setValue(null, { emitEvent: false });
+      }
+      if (control.enabled) {
+        disabledByLogic.add(control);
+        control.disable();
       }
     }
 
@@ -153,101 +236,95 @@ export class FormConditionalLogicService {
   }
 
   /**
-   * Evaluador seguro de expresiones JS para formularios (showIf/hideIf)
+   * Decide si el campo debe verse. Si la expresión es inválida se informa UNA
+   * vez y el campo se deja visible: ocultarlo en silencio lo sacaría de la
+   * validación y del envío por un error de configuración.
    */
-  private evaluateExpression(expression: string, context: any, formGroup?: FormGroup): boolean {
+  private shouldBeVisible(mapping: FormFieldMapping, scope: ExpressionScope): boolean {
+    const isShowIf = !!mapping.showIf;
+    const expression = (isShowIf ? mapping.showIf : mapping.hideIf)!;
+
     try {
-      if (formGroup) {
-        const formValues = formGroup.getRawValue();
-
-        const formHelpers = {
-          getControl: (controlName: string) => formGroup.get(controlName)?.value,
-          hasValue: (controlName: string) => {
-            const val = formGroup.get(controlName)?.value;
-            return val !== null && val !== undefined && val !== '';
-          },
-          isValue: (controlName: string, expectedValue: any) => {
-            return formGroup.get(controlName)?.value === expectedValue;
-          },
-          greaterThan: (controlName: string, min: number) => {
-            const val = formGroup.get(controlName)?.value;
-            return typeof val === 'number' && val > min;
-          },
-          isValid: (controlName: string) => {
-            const control = formGroup.get(controlName);
-            return control?.valid && (control?.dirty || control?.touched);
-          },
-        };
-
-        const evalContext = {
-          ...formValues,
-          ...formHelpers,
-          ...this.createSafePropertyAccess(formValues),
-        };
-
-        return this.executeExpression(expression, evalContext);
-      }
-
-      return this.executeExpression(expression, context);
+      const result = Boolean(evaluateNode(this.compile(expression), scope));
+      return isShowIf ? result : !result;
     } catch (error) {
-      console.error(`Error evaluando expresión "${expression}":`, error);
-      return false;
+      this.reportOnce(mapping, isShowIf ? 'showIf' : 'hideIf', expression, error);
+      return true;
     }
   }
 
-  /**
-   * Crea acceso seguro a propiedades del formulario
-   */
-  private createSafePropertyAccess(formValues: any): any {
-    const result: any = {};
-
-    Object.keys(formValues).forEach((key) => {
-      if (!result[key]) {
-        result[key] = formValues[key];
+  private compile(expression: string): ExpressionNode {
+    let entry = this.compiled.get(expression);
+    if (!entry) {
+      try {
+        entry = parseExpression(expression);
+      } catch (error) {
+        entry = error instanceof ExpressionError ? error : new ExpressionError(String(error));
       }
-    });
-
-    return result;
+      this.compiled.set(expression, entry);
+    }
+    if (entry instanceof ExpressionError) throw entry;
+    return entry;
   }
 
+  private reportOnce(mapping: FormFieldMapping, kind: string, expression: string, error: unknown): void {
+    const key = `${mapping.controlName}|${kind}|${expression}`;
+    if (this.reportedErrors.has(key)) return;
+    this.reportedErrors.add(key);
+
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`Error en ${kind} de "${mapping.controlName}" ("${expression}"): ${reason}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Alcance de las expresiones
+  // ---------------------------------------------------------------------------
+
   /**
-   * Ejecuta la expresión de forma segura
+   * Variables y funciones disponibles para las expresiones. Se leen los
+   * valores "crudos" (incluidos los campos deshabilitados u ocultos), porque
+   * una condición puede depender de un campo que a su vez está oculto.
    */
-  private executeExpression(expression: string, context: any): boolean {
-    try {
-      const cleanedExpr = expression.trim();
+  private buildScope(formGroup: FormGroup): ExpressionScope {
+    const values = formGroup.getRawValue() as Record<string, unknown>;
 
-      const variableRegex = /[a-zA-Z_$][a-zA-Z0-9_$]*/g;
-      const variables = cleanedExpr.match(variableRegex) || [];
-
-      const keys = [...new Set(variables)];
-      const values = keys.map((key) => (context[key] !== undefined ? context[key] : undefined));
-
-      const helpers = {
-        isEmpty: (val: any) => val == null || val === '' || (Array.isArray(val) && val.length === 0),
-        isNotEmpty: (val: any) => !(val == null || val === '' || (Array.isArray(val) && val.length === 0)),
-        includes: (arr: any[], val: any) => Array.isArray(arr) && arr.includes(val),
-        equals: (a: any, b: any) => a === b,
-        notEquals: (a: any, b: any) => a !== b,
-        gt: (a: number, b: number) => a > b,
-        lt: (a: number, b: number) => a < b,
-        gte: (a: number, b: number) => a >= b,
-        lte: (a: number, b: number) => a <= b,
-        hasValue: (val: any) => val !== null && val !== undefined && val !== '',
-        isChecked: (val: any) => val === true || val === 'true',
-        isSelected: (val: any) => val && val !== '',
-      };
-
-      const allKeys = [...keys, ...Object.keys(helpers)];
-      const allValues = [...values, ...Object.values(helpers)];
-
-      const fn = new Function(...allKeys, `return (${cleanedExpr});`);
-      const result = fn(...allValues);
-
-      return Boolean(result);
-    } catch (error) {
-      console.error(`Error ejecutando expresión "${expression}":`, error);
-      return false;
+    const variables: Record<string, unknown> = { ...values };
+    // `form.campo` es un alias de `campo`, salvo que haya un campo llamado "form".
+    if (!Object.prototype.hasOwnProperty.call(values, 'form')) {
+      variables['form'] = values;
     }
+
+    const isEmpty = (val: unknown) =>
+      val == null || val === '' || (Array.isArray(val) && val.length === 0);
+
+    const functions: Record<string, ExpressionFunction> = {
+      // Sobre valores
+      isEmpty,
+      isNotEmpty: (val) => !isEmpty(val),
+      hasValue: (val) => val !== null && val !== undefined && val !== '',
+      isChecked: (val) => val === true || val === 'true',
+      isSelected: (val) => !!val && val !== '',
+      includes: (arr, val) => Array.isArray(arr) && arr.includes(val),
+      equals: (a, b) => a === b,
+      notEquals: (a, b) => a !== b,
+      gt: (a, b) => a > b,
+      lt: (a, b) => a < b,
+      gte: (a, b) => a >= b,
+      lte: (a, b) => a <= b,
+
+      // Sobre controles, por nombre
+      getControl: (name) => formGroup.get(String(name))?.value,
+      isValue: (name, expected) => formGroup.get(String(name))?.value === expected,
+      greaterThan: (name, min) => {
+        const val = formGroup.get(String(name))?.value;
+        return typeof val === 'number' && val > (min as number);
+      },
+      isValid: (name) => {
+        const control = formGroup.get(String(name));
+        return !!control && control.valid && (control.dirty || control.touched);
+      },
+    };
+
+    return { variables, functions };
   }
 }
