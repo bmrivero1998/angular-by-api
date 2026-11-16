@@ -52,13 +52,7 @@ export class FormDomSynchronizerService {
     const instanceDomListeners: Array<() => void> = [];
     const externalInstances = new Map<string, any>();
 
-    // PRIMERO: Configurar el motor de lógica condicional.
-    // Se debe ejecutar antes de los listeners individuales.
-    instanceSubscriptions.add(
-      this.conditionalLogic.setupConditionalLogic(formGroup, formContainer, fieldMappings),
-    );
-
-    // LUEGO: Configurar los mappings individuales
+    // Configurar los mappings individuales
     fieldMappings.forEach((mapping) => {
       const control = formGroup.get(mapping.controlName) as FormControl | null;
       const elements = formContainer.querySelectorAll(
@@ -114,6 +108,14 @@ export class FormDomSynchronizerService {
       }
     });
 
+    // La lógica condicional va AL FINAL: su primera evaluación es síncrona y
+    // necesita que cada control ya tenga su valor inicial (el del HTML, el
+    // defaultValue o los datos iniciales). Si corriera antes, evaluaría
+    // condiciones con valores todavía vacíos.
+    instanceSubscriptions.add(
+      this.conditionalLogic.setupConditionalLogic(formGroup, formContainer, fieldMappings),
+    );
+
     this.managedForms.set(formInstanceId, {
       formGroup,
       formContainer,
@@ -147,7 +149,10 @@ export class FormDomSynchronizerService {
     const element = instance.formContainer.querySelector(mapping.domSelector) as HTMLElement;
     if (!element) return true;
 
-    const target = this.conditionalLogic.findVisibilityTarget(element, mapping);
+    const target = this.conditionalLogic.findVisibilityTarget(element, mapping, {
+      container: instance.formContainer,
+      mappings: instance.fieldMappings,
+    });
     return target ? target.style.display !== 'none' : true;
   }
 

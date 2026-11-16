@@ -124,6 +124,11 @@ export class FormDomValueSyncService {
           newValue = el.value;
         } else if (mapping.toggleConfig) {
           newValue = this.getToggleValue(el, mapping);
+        } else {
+          // El elemento no es un control del que se pueda leer un valor (p. ej.
+          // un contenedor mapeado por error). El `input` de sus hijos burbujea
+          // hasta aquí: sin esta salida, cada tecla vaciaría el control.
+          return;
         }
 
         if (!this.valuesEqual(control.value, newValue)) {

@@ -123,6 +123,23 @@ describe('FormDomValueSyncService', () => {
     });
   });
 
+  describe('setupDomToFormSync (elementos sin valor)', () => {
+    it('ignora eventos burbujeados desde un hijo cuando el elemento mapeado no es un control', () => {
+      const control = new FormControl('conservar');
+      const wrapper = document.createElement('div');
+      const inner = document.createElement('input');
+      wrapper.appendChild(inner);
+      container.appendChild(wrapper);
+
+      service.setupDomToFormSync(control, nodeListOf(wrapper), { controlName: 'x', domSelector: '#wrapper' });
+      inner.value = 'tecleado';
+      inner.dispatchEvent(new Event('input', { bubbles: true }));
+
+      expect(control.value).toBe('conservar');
+      expect(control.dirty).toBeFalse();
+    });
+  });
+
   describe('updateSingleControlDomState', () => {
     it('aplica valor, disabled y clases de validación', () => {
       const control = new FormControl('', Validators.required);
