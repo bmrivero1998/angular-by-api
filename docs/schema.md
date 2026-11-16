@@ -29,7 +29,7 @@ Es un **arreglo** de "secciones". Cada objeto:
 Reglas clave:
 
 - `formId`, `formMappings`, `formInitialData` y `buttonConfigs` **solo van** si la sección trae un formulario real. Si no, se omiten del objeto (no se manda `null`).
-- El `cssComponent` **siempre** escopea sus selectores con el prefijo `dynamic-` + `id_DocumentHTMLCSS`, sin importar si `renderType` es `"static"` o `"dynamic"`.
+- El `cssComponent` queda aislado a su sección automáticamente, sin importar si `renderType` es `"static"` o `"dynamic"`. No hace falta prefijar los selectores (si ya vienen con `.dynamic-` + `id_DocumentHTMLCSS`, se respetan). Ver [Estilos](styling.md).
 - Puedes tener **múltiples forms independientes** en el mismo arreglo (cada uno con su propio `formId`) — todos se agregan al mismo `FormGroup` padre sin pisarse.
 - El HTML se sanitiza con `DOMPurify` antes de renderizarse — cualquier `<script>` u `onerror=`/`onclick=` inline se elimina. **No confíes en poder ejecutar JS arbitrario desde el HTML del JSON.**
 

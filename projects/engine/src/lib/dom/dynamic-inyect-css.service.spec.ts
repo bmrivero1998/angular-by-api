@@ -57,6 +57,29 @@ describe('DynamicInyectCssService', () => {
   });
 
   // --- 2. Inyección Global (HEAD) ---
+  describe('injectCss con aislamiento (scopeClass)', () => {
+    it('reescribe el CSS para que solo aplique dentro de la sección', () => {
+      service.injectCss('.card { color: red; }', 'style-1', undefined, { scopeClass: 'dynamic-sec1' });
+
+      const text = renderer2Spy.createText.calls.mostRecent().args[0] as string;
+      expect(text).toContain(':where(.dynamic-sec1) .card');
+    });
+
+    it('sin scopeClass inserta el CSS tal cual (comportamiento anterior)', () => {
+      service.injectCss('.card { color: red; }', 'style-1');
+
+      expect(renderer2Spy.createText).toHaveBeenCalledWith('.card { color: red; }');
+    });
+
+    it('no vuelve a prefijar los selectores que ya vienen aislados por el backend', () => {
+      service.injectCss('.dynamic-sec1 .card { color: red; }', 'style-1', undefined, { scopeClass: 'dynamic-sec1' });
+
+      const text = renderer2Spy.createText.calls.mostRecent().args[0] as string;
+      expect(text).toContain('.dynamic-sec1 .card');
+      expect(text).not.toContain(':where');
+    });
+  });
+
   describe('injectCss (Global / HEAD)', () => {
     it('should inject style into document HEAD when no targetElement is provided', () => {
       const css = '.test { color: red; }';
