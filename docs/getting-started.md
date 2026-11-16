@@ -45,6 +45,8 @@
 | `debug` | boolean | `false` | Si es `true`, loguea en consola cada evento interno (`controlChanged`, `formStateChanged`, `actionTriggered` crudo). Útil para debuggear en un host sin devtools cómodos. |
 | `form-state-debounce` | number | `150` | Debounce en ms del evento `formStateChanged`. `0` = emite en cada tecla. |
 | `allowed-origins` | texto | — | Orígenes, separados por coma, a los que el contenido puede enviar datos del usuario (subida de archivos, sugerencias de autocompletado) además del de la página y del de `api-url`. Ver [Seguridad](security.md#a-dónde-se-pueden-enviar-datos). |
+| `stylesheets` | texto | — | Hojas de estilo que carga el widget (separadas por espacio o coma): Bootstrap, Tailwind compilado, la de tu marca. Ver [Estilos](styling.md#frameworks-css-bootstrap-tailwind-y-otros). |
+| `error-class` / `success-class` | texto | `is-invalid` / `is-valid` | Clases (separadas por espacio) para un campo inválido / válido. Con Tailwind, por ejemplo `border-red-500`. |
 | `show-error-page` | boolean | `true` | Si falla la primera carga por `api-url`, pinta una página de error. Con `"false"` solo se emite `errorOccurred`. Ver [Errores de carga](errors.md). |
 
 ## Métodos del elemento
