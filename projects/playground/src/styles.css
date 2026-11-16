@@ -1,0 +1,21 @@
+/* Estilos del playground (la "página host"). No forman parte del widget. */
+body { margin: 0; padding-bottom: 220px; }
+
+.pg-bar {
+  position: sticky; top: 0; z-index: 1000;
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 16px; background: #0f172a; color: #f8fafc; font: 14px/1.4 system-ui, sans-serif;
+}
+.pg-bar select { padding: 4px 8px; border-radius: 4px; }
+.pg-bar #pg-status { margin-left: auto; opacity: 0.75; }
+
+.pg-log {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 200px; z-index: 1000;
+  display: flex; flex-direction: column;
+  background: #0f172a; color: #e2e8f0; font: 12px/1.5 ui-monospace, monospace;
+}
+.pg-log-head { display: flex; justify-content: space-between; padding: 6px 16px; border-bottom: 1px solid #334155; }
+.pg-log-head button { background: none; border: 1px solid #475569; color: inherit; border-radius: 4px; padding: 0 8px; cursor: pointer; }
+.pg-log ol { margin: 0; padding: 8px 16px 8px 48px; overflow: auto; flex: 1; }
+.pg-log li { white-space: pre-wrap; word-break: break-word; }
+.pg-log .pg-ev { color: #7dd3fc; }

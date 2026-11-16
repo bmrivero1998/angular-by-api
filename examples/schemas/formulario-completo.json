@@ -1,0 +1,56 @@
+[
+  {
+    "id_DocumentHTMLCSS": "registro-pro-001",
+    "renderType": "dynamic",
+    "htmlComponent": "\n    <div class=\"card p-4 shadow\">\n      <h2 class=\"mb-4\">Registro de Usuario Pro</h2>\n      <form id=\"formRegistro\">\n        <div class=\"mb-3\">\n          <label class=\"form-label\">Nombre de Usuario</label>\n          <input name=\"username\" class=\"form-control\" placeholder=\"Escribe tu alias...\">\n          <div id=\"user-error\" class=\"text-danger small mt-1\"></div>\n        </div>\n\n        <div class=\"mb-3\">\n          <label class=\"form-label\">Tipo de Cuenta</label>\n          <select name=\"tipoCuenta\" class=\"form-select\">\n            <option value=\"estandar\">Estándar</option>\n            <option value=\"premium\">Premium</option>\n          </select>\n        </div>\n\n        <div id=\"seccionPremium\" class=\"mb-3 border-start border-primary ps-3\">\n          <label class=\"form-label\">Código de Invitación Premium</label>\n          <input name=\"codigoVip\" class=\"form-control\" placeholder=\"VIP-XXXX\">\n        </div>\n\n        <button id=\"btnEnviar\" class=\"btn btn-primary w-100 mt-3\" data-dynamic-action=\"submit_form\">\n          Registrar Ahora\n        </button>\n      </form>\n    </div>\n  ",
+    "cssComponent": "\n    .card { border-radius: 15px; }\n    .is-invalid { border-color: #dc3545 !important; }\n    .is-valid { border-color: #198754 !important; }\n  ",
+    "formMappings": [
+      {
+        "controlName": "username",
+        "domSelector": "input[name=\"username\"]",
+        "errorDisplaySelector": "#user-error",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "El alias es obligatorio."
+          },
+          {
+            "type": "minlength",
+            "value": 5,
+            "message": "Mínimo 5 caracteres."
+          }
+        ],
+        "asyncValidator": {
+          "endpoint": "/check-username",
+          "method": "GET",
+          "errorKey": "userTaken",
+          "message": "¡Este nombre ya está en uso!",
+          "debounceTime": 800
+        }
+      },
+      {
+        "controlName": "tipoCuenta",
+        "domSelector": "select[name=\"tipoCuenta\"]",
+        "defaultValue": "estandar"
+      },
+      {
+        "controlName": "codigoVip",
+        "domSelector": "#seccionPremium",
+        "showIf": "form.tipoCuenta === 'premium'",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "El código VIP es necesario para cuentas Premium."
+          }
+        ]
+      }
+    ],
+    "buttonConfigs": [
+      {
+        "selector": "#btnEnviar",
+        "disableWhen": "formIsInvalid"
+      }
+    ],
+    "formId": "registro_pro"
+  }
+]

@@ -1,0 +1,74 @@
+# Guía de contribución
+
+## Preparar el entorno
+
+Requiere Node 20 o superior.
+
+```bash
+npm install
+npm start    # playground en http://localhost:4200
+```
+
+## Estructura del repositorio
+
+| Carpeta | Qué es | Puede importar de |
+|---|---|---|
+| `projects/engine` | Librería Angular: el motor de render y formularios. | Nada del repo. |
+| `projects/runtime` | El custom element `<ux-driven-viewer>`: widget, carga de contenido, modal, loader, toasts. | `engine`, siempre vía `@ux-driven-viewer/engine`. |
+| `projects/playground` | Página host para desarrollar y probar. | `runtime`. |
+| `examples` | Esquemas JSON y hosts de ejemplo. | — |
+| `docs` | Documentación de uso. | — |
+| `scripts` | Scripts de build. | — |
+
+La regla que mantiene esto ordenado: **las dependencias van en un solo sentido** (`engine ← runtime ← playground`). El `engine` nunca importa del `runtime`, y el `runtime` nunca importa archivos internos del `engine` por ruta relativa.
+
+Dentro de `projects/engine/src/lib`:
+
+| Carpeta | Contenido |
+|---|---|
+| `viewer/` | `DynamicViewerComponent`, el orquestador. |
+| `forms/sync/` | Sincronización DOM ↔ `FormGroup`. |
+| `forms/validation/` | Validadores síncronos y asíncronos. |
+| `forms/conditional/` | `showIf` / `hideIf`. |
+| `forms/controls/` | Controles especiales, archivos, máscaras. |
+| `forms/buttons/` | Reglas `disableWhen`. |
+| `dom/` | Listeners sobre el HTML inyectado, inyección de CSS, timers, limpieza. |
+| `security/` | Sanitizado. |
+| `config/` | `DYNAMIC_CONFIG` y constantes. |
+| `models/` | Interfaces del esquema JSON. |
+| `experimental/` | Código sin terminar. No se exporta ni tiene garantías. |
+
+Todo lo que deba ser público se exporta en `projects/engine/src/public-api.ts`.
+
+## Comandos
+
+```bash
+npm run build:engine       # compila la librería en dist/engine
+npm run build:runtime      # compila el widget y genera dist/elements/ux-driven-viewer.js
+npm run build              # ambos
+
+npm run test:engine        # tests de la librería (modo watch)
+npm run test:runtime       # tests del runtime (modo watch)
+npm run test:ci            # ambas suites, una sola pasada, headless
+```
+
+### Cómo se empaqueta el widget
+
+`scripts/build-elements.js` concatena `runtime.js + polyfills.js + main.js` de `dist/runtime` **como scripts clásicos, en ese orden, sin envolverlos en una función ni en un módulo**, e inyecta `styles.css` mediante un `<style>` al inicio del bundle. `zone.js` necesita parchear el scope global; por eso no se usa `--single-bundle` de `ngx-build-plus`, que envuelve la salida y produce `NG0908` en ejecución.
+
+## Antes de abrir un pull request
+
+- `npm run test:ci` y `npm run build` en verde.
+- Cada cambio de comportamiento lleva un test que lo cubre. El spec vive junto al archivo que prueba.
+- Si cambias el formato del JSON, los eventos o los atributos del widget, actualiza `docs/` y `CHANGELOG.md`.
+- Prueba el cambio en el playground con alguno de los esquemas de `examples/schemas`.
+
+## Commits
+
+En español, con prefijo de tipo (`feat:`, `fix:`, `refactor:`, `doc:`, `test:`), en imperativo, explicando el porqué cuando no sea obvio.
+
+## Código nuevo
+
+- Un servicio, una responsabilidad. Evita añadir lógica de DOM o de formularios directamente al componente.
+- Nada de `any` nuevo en la API pública.
+- El HTML que llega del JSON no ejecuta código. Cualquier interacción nueva se declara con atributos `data-*` y se resuelve en el motor.

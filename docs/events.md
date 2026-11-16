@@ -1,0 +1,26 @@
+# Eventos que emite (`CustomEvent`, `event.detail`)
+
+```js
+viewer.addEventListener('ready', (e) => { /* boolean: terminó de cargar */ });
+viewer.addEventListener('formSubmit', (e) => { /* data del form al hacer submit válido */ });
+viewer.addEventListener('actionTriggered', (e) => {
+  // e.detail = { action, sourceId, clickedElement, originalEvent, context: { formValue, formValid } }
+});
+viewer.addEventListener('errorOccurred', (e) => { /* string con el error */ });
+viewer.addEventListener('modalResult', (e) => { /* data devuelta por un modal al cerrarse */ });
+viewer.addEventListener('fileSelected', (e) => {
+  // e.detail = { controlName, file, formId, isMultiple }
+});
+viewer.addEventListener('controlChanged', (e) => {
+  // e.detail = { controlName, value, formId, valid, invalid, dirty, touched, pending, errors }
+  // Se dispara por CADA campo, en CADA cambio de valor o de estado.
+});
+viewer.addEventListener('formStateChanged', (e) => {
+  // e.detail = { value, valid, invalid, dirty, pristine, touched, pending }
+  // Snapshot del FormGroup COMPLETO (todas las secciones combinadas), debounced.
+});
+```
+
+---
+
+[← Volver al índice de documentación](../README.md#documentación)

@@ -1,0 +1,27 @@
+import { Injectable } from '@angular/core';
+import { delay, map, Observable, of } from 'rxjs';
+import {
+  ApiDrivenContent,
+  DynamicApiResponse,
+} from '@ux-driven-viewer/engine';
+import { HttpClient } from '@angular/common/http';
+
+@Injectable({
+  providedIn: 'root',
+})
+
+
+export class DynamicContentService {
+  //private readonly apiUrl = 'http://localhost:3000/api/html-css/';
+  constructor(private readonly http: HttpClient) {}
+  /**
+   * Realiza una petición GET a la API para obtener el contenido dinámico.
+   * El contenido se devuelve como un Observable de un array de objetos DynamicContentInterface,
+   * que incluyen la configuración, el HTML y los estilos CSS para cada contenido.
+   * Si no se obtiene respuesta, se devuelve un array vacío.
+   * @returns Observable<ApiDrivenContent[]>
+   */
+  getContent(apiURL:string): Observable<any> {
+    return this.http.get<any>(apiURL).pipe()
+  }
+}

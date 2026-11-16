@@ -1,0 +1,55 @@
+[
+  {
+    "id_DocumentHTMLCSS": "super-test-001",
+    "renderType": "dynamic",
+    "htmlComponent": "\n      <div class=\"card p-4 shadow-lg\" style=\"background: #f8f9fa; color: #333; border-radius: 20px;\">\n        <h2 id=\"titulo-dinamico\" class=\"mb-4 text-primary\">Cargando título...</h2>\n        \n        <form id=\"registroForm\">\n          <div class=\"mb-3\">\n            <label class=\"form-label\">Nombre Completo (Solo letras):</label>\n            <input name=\"nombre\" class=\"form-control\" placeholder=\"Escribe aquí...\">\n          </div>\n\n          <div class=\"mb-3\">\n            <label class=\"form-label\">Teléfono (Máscara: (999) 999-9999):</label>\n            <input name=\"telefono\" class=\"form-control\" placeholder=\"(000) 000-0000\">\n          </div>\n\n          <div class=\"mb-3 form-check\">\n            <input type=\"checkbox\" name=\"mostrarExtra\" class=\"form-check-input\" id=\"checkExtra\">\n            <label class=\"form-check-label\" for=\"checkExtra\">¿Tienes un código VIP?</label>\n          </div>\n\n          <div id=\"seccion-vip\" class=\"mb-3 p-3 bg-warning-subtle border border-warning rounded\">\n            <label class=\"form-label\">Código VIP (Requerido si se muestra):</label>\n            <input name=\"codigoVip\" class=\"form-control\" placeholder=\"VIP-123\">\n          </div>\n\n          <div class=\"mt-4\">\n            <h5>Historial de Acciones</h5>\n            <table id=\"tabla-logs\" class=\"table table-sm table-striped\"></table>\n          </div>\n\n          <button id=\"btn-enviar\" class=\"btn btn-primary w-100 mt-3\" data-dynamic-action=\"submit_form\">\n            Enviar Registro\n          </button>\n        </form>\n      </div>\n    ",
+    "cssComponent": "\n      .card { max-width: 600px; margin: auto; }\n      .is-invalid { border: 2px solid #dc3545 !important; }\n      .is-valid { border: 2px solid #198754 !important; }\n    ",
+    "formMappings": [
+      {
+        "controlName": "nombre",
+        "domSelector": "input[name=\"nombre\"]",
+        "keyFilter": "alpha",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "Obligatorio"
+          }
+        ]
+      },
+      {
+        "controlName": "telefono",
+        "domSelector": "input[name=\"telefono\"]",
+        "inputMask": "(999) 999-9999"
+      },
+      {
+        "controlName": "mostrarExtra",
+        "domSelector": "input[name=\"mostrarExtra\"]",
+        "defaultValue": false
+      },
+      {
+        "controlName": "codigoVip",
+        "domSelector": "#seccion-vip",
+        "showIf": "form.mostrarExtra === true",
+        "validatorConfig": [
+          {
+            "type": "required",
+            "message": "El código VIP es obligatorio"
+          }
+        ]
+      }
+    ],
+    "dataBindings": [
+      {
+        "selector": "#titulo-dinamico",
+        "value": "Constructor de Webs Pro"
+      }
+    ],
+    "buttonConfigs": [
+      {
+        "selector": "#btn-enviar",
+        "disableWhen": "formIsInvalid"
+      }
+    ],
+    "formId": "registro_basico"
+  }
+]
