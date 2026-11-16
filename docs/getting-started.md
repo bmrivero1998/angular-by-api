@@ -45,6 +45,17 @@
 | `debug` | boolean | `false` | Si es `true`, loguea en consola cada evento interno (`controlChanged`, `formStateChanged`, `actionTriggered` crudo). Útil para debuggear en un host sin devtools cómodos. |
 | `form-state-debounce` | number | `150` | Debounce en ms del evento `formStateChanged`. `0` = emite en cada tecla. |
 
+## Métodos del elemento
+
+Además de los atributos, el elemento expone dos métodos (disponibles una vez creado; si los llamas al cargar la página, espera al evento `ready`):
+
+| Método | Qué hace |
+|---|---|
+| `viewer.updateSections([...])` | Actualiza solo las secciones que le mandas, por `id_DocumentHTMLCSS`. Devuelve `{ mode, changedIds, issues }`. |
+| `viewer.refresh()` | Vuelve a pedir el JSON a `api-url` y actualiza lo que cambió. |
+
+Ver [Actualizar el contenido](updating-content.md).
+
 **Nota:** los atributos HTML solo aceptan strings. Para pasar `local-schema` (un arreglo) o `external-form` (un `FormGroup`), asígnalos como **propiedad JS**, no como atributo:
 
 ```js

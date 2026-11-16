@@ -5,6 +5,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Cambiado (carga y actualización de contenido)
+
+- **`static` y `dynamic` ahora significan cómo se actualiza una sección**, no dónde se pinta. Al recibir contenido, el widget lo compara por `id_DocumentHTMLCSS` contra lo que tiene en memoria: si cambia una sección `static` se recarga toda la pantalla; si cambian solo secciones `dynamic` se actualiza únicamente cada una, y las demás conservan su componente y lo que el usuario escribió; si no cambia nada, no se toca nada. Ver `docs/updating-content.md`.
+- **El orden en pantalla es el del JSON.** Antes todas las `static` se pintaban primero, aunque estuvieran al final del arreglo.
+- Las secciones `static` ya no se ven mientras carga y las `dynamic` no se ocultan: solo hay indicador de carga en la primera carga por API. Al volver a cargar, lo que está en pantalla se queda hasta que llega la respuesta.
+- `ready` se emite cuando la pantalla se pinta completa (primera carga y recarga completa), no al actualizar una `dynamic`.
+- Una respuesta ilegible de la API (o un JSON roto) ya no vacía la pantalla: se informa por `errorOccurred` y se deja todo como estaba.
+- `DynamicViewerService` deja de ser un singleton: se provee en cada widget. Se eliminan `staticContent$`, `dynamicContent$`, `updateStaticContent` y `updateDynamicContent`; en su lugar hay `content$`, `getContentValue()` y `updateSections()`. `loadInitialContent` y `setLocalContent` devuelven un `ContentChange`.
+
+### Añadido (carga y actualización de contenido)
+
+- Método `updateSections([...])` en el elemento y en el widget: actualiza solo las secciones que se le mandan, por `id_DocumentHTMLCSS`.
+- Método `refresh()` en el elemento (antes solo existía en el componente y no era accesible desde el custom element).
+- Evento `contentUpdated` (`mode`: `initial`, `patched` o `reloaded`, más `changedIds` e `issues`).
+- Ejemplo `examples/schemas/secciones.json` y botones en el playground para ver la diferencia entre actualizar una `dynamic`, una `static` o reenviar el mismo JSON.
+
+### Corregido (carga de contenido)
+
+- Dos `<ux-driven-viewer>` en la misma página compartían el contenido en memoria y se pisaban.
+- Con `api-url`, el contenido se pedía dos veces al iniciar.
+- Una sección sin `renderType` (o con un typo) se descartaba en silencio; ahora se pinta como `static` y se informa. Lo mismo con una sección sin `id_DocumentHTMLCSS` (se le asigna uno) o con un `id` repetido (se conserva la primera).
+
 ### Corregido (aislamiento del CSS)
 
 - El `cssComponent` de cada sección queda aislado a esa sección: una regla `.card { … }` del JSON ya no afecta a las tarjetas de la página host ni a otras secciones. Antes dependía de que el backend prefijara bien cada selector; ahora el motor lo hace por su cuenta.

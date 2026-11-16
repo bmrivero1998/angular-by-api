@@ -8,17 +8,18 @@
 <div [ngStyle]="{ display: 'grid', 'grid-template-columns': 'repeat(12, 1fr)', gap: gridGap + 'px', width: '100%' }">
 
   <!-- ========================================== -->
-  <!-- 1. CONTENIDO ESTÁTICO (Siempre visible)    -->
+  <!-- 1. SECCIONES, en el orden del JSON          -->
+  <!-- `static` y `dynamic` se pintan igual: la diferencia es cómo se actualizan -->
+  <!-- (ver DynamicViewerService). trackBy conserva el componente de cada      -->
+  <!-- sección mientras no cambie, y con él lo que el usuario escribió.        -->
   <!-- ========================================== -->
-  <ng-container *ngIf="staticContent$ | async as staticItems">
-    <ng-container *ngFor="let item of staticItems">
-      <ng-container *ngTemplateOutlet="viewerTemplate; context: { $implicit: item }">
-      </ng-container>
+  <ng-container *ngFor="let item of content$ | async; trackBy: trackSection">
+    <ng-container *ngTemplateOutlet="viewerTemplate; context: { $implicit: item }">
     </ng-container>
   </ng-container>
 
   <!-- ========================================== -->
-  <!-- 2. ESTADO DE CARGA (spinner CSS puro, sin depender de Bootstrap ni de nada externo) -->
+  <!-- 2. ESTADO DE CARGA: solo en la primera carga por API (spinner CSS puro, sin depender de Bootstrap) -->
   <!-- ========================================== -->
   <div *ngIf="isLoading" [ngStyle]="{ 'grid-column': 'span 12', display: 'flex', 'flex-direction': 'column', 'align-items': 'center', 'justify-content': 'center', padding: '48px 0' }">
     <div
@@ -35,18 +36,6 @@
     </div>
     <p [ngStyle]="{ 'margin-top': '12px' }">Cargando formulario...</p>
   </div>
-
-  <!-- ========================================== -->
-  <!-- 3. CONTENIDO DINÁMICO (Oculto al cargar)   -->
-  <!-- ========================================== -->
-  <ng-container *ngIf="!isLoading">
-    <ng-container *ngIf="dynamicContent$ | async as dynamicItems">
-      <ng-container *ngFor="let item of dynamicItems">
-        <ng-container *ngTemplateOutlet="viewerTemplate; context: { $implicit: item }">
-        </ng-container>
-      </ng-container>
-    </ng-container>
-  </ng-container>
 
 </div>
 

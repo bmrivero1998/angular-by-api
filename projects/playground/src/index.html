@@ -12,6 +12,11 @@
       <strong>ux-driven-viewer</strong>
       <label for="pg-example">Ejemplo</label>
       <select id="pg-example"></select>
+      <span class="pg-actions" aria-label="Actualizar contenido">
+        <button id="pg-patch" type="button" title="updateSections con la última sección dynamic">Cambiar una dynamic</button>
+        <button id="pg-static" type="button" title="updateSections con la primera sección static">Cambiar una static</button>
+        <button id="pg-resend" type="button" title="Vuelve a asignar localSchema con el mismo contenido">Reenviar el mismo JSON</button>
+      </span>
       <span id="pg-status" role="status"></span>
     </header>
 

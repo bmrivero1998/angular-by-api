@@ -15,7 +15,7 @@ Es un **arreglo** de "secciones". Cada objeto:
   "dataBindings": [ /* ver más abajo */ ],
 
   "renderType": "static | dynamic",
-  "dynamicContentId": "content_<hash>",
+  "dynamicContentId": "content_<hash>",   // sin uso por ahora
 
   "otros": {
     "source": {},
@@ -28,6 +28,8 @@ Es un **arreglo** de "secciones". Cada objeto:
 
 Reglas clave:
 
+- `id_DocumentHTMLCSS` identifica la sección: debe ser **único** en el arreglo. Es la clave con la que el widget compara y actualiza secciones.
+- `renderType` es obligatorio y decide cómo se actualiza la sección, no dónde se pinta (el orden es el del arreglo): una `static` recarga toda la pantalla al cambiar; una `dynamic` solo se actualiza a sí misma. Ver [Actualizar el contenido](updating-content.md).
 - `formId`, `formMappings`, `formInitialData` y `buttonConfigs` **solo van** si la sección trae un formulario real. Si no, se omiten del objeto (no se manda `null`).
 - El `cssComponent` queda aislado a su sección automáticamente, sin importar si `renderType` es `"static"` o `"dynamic"`. No hace falta prefijar los selectores (si ya vienen con `.dynamic-` + `id_DocumentHTMLCSS`, se respetan). Ver [Estilos](styling.md).
 - Puedes tener **múltiples forms independientes** en el mismo arreglo (cada uno con su propio `formId`) — todos se agregan al mismo `FormGroup` padre sin pisarse.

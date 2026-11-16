@@ -1,260 +1,350 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, map, Observable, of, tap } from 'rxjs';
+import { BehaviorSubject, map, Observable } from 'rxjs';
 import {
   ApiDrivenContent,
   DisplayableInAppComponent,
   TableBindingColumn,
-} from '@ux-driven-viewer/engine'; // Ajusta la ruta
+} from '@ux-driven-viewer/engine';
 import { DynamicContentService } from './dynamic-content.service';
 import { DomSanitizer } from '@angular/platform-browser';
-// Asumimos que el mock se importa para la demo
 
-@Injectable({
-  providedIn: 'root',
-})
+/**
+ * Qué hizo el widget con un contenido recibido:
+ * - `initial`:   no había nada en memoria; se pintó todo.
+ * - `unchanged`: lo recibido es idéntico a lo que ya hay; no se tocó nada.
+ * - `patched`:   cambiaron solo secciones `dynamic`; se actualizó únicamente cada una de ellas.
+ * - `reloaded`:  cambió una sección `static` (o su presencia u orden); se recargó TODA la pantalla.
+ */
+export type ContentChangeMode = 'initial' | 'unchanged' | 'patched' | 'reloaded';
+
+export interface ContentChange {
+  mode: ContentChangeMode;
+  /** `id_DocumentHTMLCSS` de las secciones agregadas, quitadas o modificadas. */
+  changedIds: string[];
+  /** Problemas del contenido recibido (sin id, id repetido, sin renderType...). Se informan, no se ocultan. */
+  issues: string[];
+}
+
+/** Una sección en memoria. */
+interface Section {
+  id: string;
+  /** Lo que llegó (ya normalizado). Es contra lo que se compara un envío nuevo. */
+  source: ApiDrivenContent;
+  /** Lo que se pinta: `source` con las tablas ya generadas, más los cambios en caliente (updateTable / updateBindingValue). */
+  rendered: ApiDrivenContent;
+}
+
+/**
+ * Mantiene en memoria las secciones de la pantalla, identificadas por su
+ * `id_DocumentHTMLCSS`, y decide qué hay que volver a pintar cuando llega
+ * contenido nuevo.
+ *
+ * Modelo (`renderType`):
+ * - **static**: estructura de la pantalla. Cambiar una sección estática
+ *   recarga la pantalla completa, con todos sus componentes.
+ * - **dynamic**: contenido actualizable. Cambiar una sección dinámica solo
+ *   actualiza esa sección; las demás conservan su estado (lo que el usuario
+ *   haya escrito en ellas, por ejemplo).
+ *
+ * El orden en pantalla es siempre el del JSON recibido.
+ *
+ * No es un singleton: se provee en cada widget (`providers` del componente),
+ * de modo que dos `<ux-driven-viewer>` en la misma página tienen su propia
+ * memoria y no se pisan.
+ */
+@Injectable()
 export class DynamicViewerService {
-  private readonly _staticContent$ = new BehaviorSubject<ApiDrivenContent[]>(
-    []
-  );
-  public readonly staticContent$: Observable<ApiDrivenContent[]> =
-    this._staticContent$.asObservable();
+  private sections: Section[] = [];
+  private readonly _content$ = new BehaviorSubject<ApiDrivenContent[]>([]);
 
-  private readonly _dynamicContent$ = new BehaviorSubject<ApiDrivenContent[]>(
-    []
-  );
-  public readonly dynamicContent$: Observable<ApiDrivenContent[]> =
-    this._dynamicContent$.asObservable();
+  /** Secciones a pintar, en el orden del JSON. */
+  public readonly content$: Observable<ApiDrivenContent[]> = this._content$.asObservable();
 
-  constructor(private dcs: DynamicContentService,
+  /** Cambia con cada recarga completa: invalida la identidad de TODAS las secciones. */
+  private epoch = 0;
+  /** Cambia cuando se actualiza una sección concreta: invalida solo la suya. */
+  private readonly revisions = new Map<string, number>();
+
+  constructor(
+    private dcs: DynamicContentService,
     private sanitizer: DomSanitizer,
   ) {}
 
-// =========================================================
-  // === GETTERS (Snapshots) ===
-  // =========================================================
-  public getStaticContentValue(): ApiDrivenContent[] {
-    return this._staticContent$.getValue();
+  /**
+   * Clave de identidad de una sección para `trackBy`. Mientras no cambie,
+   * Angular conserva el componente ya creado (y su formulario); al cambiar,
+   * lo destruye y crea uno nuevo.
+   */
+  public readonly trackSection = (_index: number, item: ApiDrivenContent): string =>
+    `${this.epoch}:${this.revisions.get(item.id_DocumentHTMLCSS) ?? 0}:${item.id_DocumentHTMLCSS}`;
+
+  /** Foto de las secciones que se están pintando. */
+  public getContentValue(): ApiDrivenContent[] {
+    return this._content$.getValue();
   }
 
-  public getDynamicContentValue(): ApiDrivenContent[] {
-    return this._dynamicContent$.getValue();
+  // ---------------------------------------------------------------------------
+  // Entradas de contenido
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Pide el contenido a la API y lo aplica. Sirve para la primera carga y
+   * para volver a cargar: lo recibido se compara contra lo que hay en
+   * memoria (ver `ContentChange`). Una respuesta ilegible NO borra lo que ya
+   * se está mostrando; se informa en `issues`.
+   */
+  public loadInitialContent(pageIdentifier: string): Observable<ContentChange> {
+    return this.dcs.getContent(pageIdentifier).pipe(map((apiResponse: unknown) => this.applyRaw(apiResponse)));
   }
 
   /**
-   * Carga y procesa el contenido inicial, incluyendo las tablas,
-   * y luego lo separa en streams estáticos y dinámicos.
+   * Aplica contenido local (sin HTTP): un arreglo, un texto JSON o la
+   * respuesta de la API (`{ content: "..." }`).
    */
-  public loadInitialContent(
-    pageIdentifier: string,
-  ): Observable<ApiDrivenContent[]> {
-    return this.dcs.getContent(pageIdentifier).pipe(
-     map((apiResponse: any) => {
-        try {
-          if (apiResponse && apiResponse.content && typeof apiResponse.content === 'string') {
-            return JSON.parse(apiResponse.content) as ApiDrivenContent[];
-          }
-          if (Array.isArray(apiResponse)) {
-            return apiResponse;
-          }
-          return [];
-        } catch (e) {
-          console.error('Error parseando JSON del DynamicContent:', e);
-          return [];
-        }
-      }),
-
-      // PASO 2: Procesar Tablas (Generar HTML de las tablas)
-      map((payloads: ApiDrivenContent[]) => {
-        return payloads.map((payload) => this._processTableBindings(payload));
-      }),
-
-      tap((processedPayloads: ApiDrivenContent[]) => {
-        const staticContent = processedPayloads.filter(
-          (p) => p.renderType === 'static'
-        );
-        const dynamicContent = processedPayloads.filter(
-          (p) => p.renderType === 'dynamic'
-        );
-        this._staticContent$.next(staticContent);
-        this._dynamicContent$.next(dynamicContent);
-      })
-    );
+  public setLocalContent(rawData: unknown): ContentChange {
+    return this.applyRaw(rawData);
   }
 
   /**
-   * Actualiza el contenido dinámico con el contenido cargado desde
-   * la API con el ID especificado.
-   * @param apiURL El ID del contenido a actualizar.
-   * @returns Un Observable que emite un array de objetos ApiDrivenContent una vez
-   * que se haya cargado el contenido dinámico.
+   * Actualiza secciones concretas sin reenviar toda la pantalla. Cada sección
+   * recibida reemplaza a la que tiene su mismo `id_DocumentHTMLCSS`; las que
+   * no existían se agregan al final. Las demás no se tocan.
    */
-  public updateDynamicContent(
-    apiURL: string,
-  ): Observable<ApiDrivenContent[]> {
-    this._dynamicContent$.next([]);
-    return this.dcs.getContent(apiURL).pipe(
-      map((payloads: ApiDrivenContent[]) => {
-        return payloads.map((payload) => this._processTableBindings(payload));
-      }),
-      tap((processedPayloads: ApiDrivenContent[]) => {
-        const dynamicContent = processedPayloads.filter(
-          (p) => p.renderType === 'dynamic'
-        );
-        this._dynamicContent$.next(dynamicContent);
-      })
-    );
-  }
+  public updateSections(rawSections: unknown): ContentChange {
+    const parsed = this.parse(rawSections);
+    if (!parsed.ok) return { mode: 'unchanged', changedIds: [], issues: parsed.issues };
 
+    const { sections: incoming, issues } = this.normalize(parsed.sections);
+    const incomingById = new Map(incoming.map((section) => [section.id_DocumentHTMLCSS, section]));
 
-  /**
-   * Actualiza el contenido estático con el contenido cargado desde
-   * la API con el ID especificado.
-   * @param apiURL la url del api para consumir
-   * @returns Un Observable que emite un array de objetos ApiDrivenContent una vez
-   * que se haya cargado el contenido estático.
-   */
-  public updateStaticContent(
-    apiURL: string,
-  ): Observable<ApiDrivenContent[]> {
-    this._staticContent$.next([]);
-    return this.dcs.getContent(apiURL).pipe(
-      map((payloads: ApiDrivenContent[]) => {
-        return payloads.map((payload) => this._processTableBindings(payload));
-      }),
-      tap((processedPayloads: ApiDrivenContent[]) => {
-        const staticContent = processedPayloads.filter(
-          (p) => p.renderType === 'static'
-        );
-        this._staticContent$.next(staticContent);
-      })
-    );
-  }
-
-  public updateTable(
-  /**
-   * Actualiza la tabla en el contenido dinámico o estático
-   * con el ID especificado.
-   * @param contentId El ID del contenido que contiene la tabla a actualizar.
-   * @param tableSelector El selector de la tabla a actualizar.
-   * @param newTableData Los nuevos datos de la tabla.
-   */
-    contentId: string,
-    tableSelector: string,
-    newTableData: { columns?: TableBindingColumn[]; data?: any[] }
-  ): void {
-    const staticState = this._staticContent$.getValue();
-    const dynamicState = this._dynamicContent$.getValue();
-
-    let staticUpdated = false;
-    const newStaticState = staticState.map((component) => {
-      if (
-        component.id_DocumentHTMLCSS === contentId &&
-        component.tableBindings
-      ) {
-        staticUpdated = true;
-        const newTableBindings = this._getUpdatedTableBindings(
-          component.tableBindings,
-          tableSelector,
-          newTableData
-        );
-        return this._processTableBindings({
-          ...component,
-          tableBindings: newTableBindings,
-        });
-      }
-      return component;
+    const merged = this.sections.map((section) => incomingById.get(section.id) ?? section.source);
+    const existing = new Set(this.sections.map((section) => section.id));
+    incoming.forEach((section) => {
+      if (!existing.has(section.id_DocumentHTMLCSS)) merged.push(section);
     });
 
-    if (staticUpdated) {
-      this._staticContent$.next(newStaticState);
-      return;
-    }
-
-    // Si no se encontró en el estático, intentamos en el dinámico
-    let dynamicUpdated = false;
-    const newDynamicState = dynamicState.map((component) => {
-      if (
-        component.id_DocumentHTMLCSS === contentId &&
-        component.tableBindings
-      ) {
-        dynamicUpdated = true;
-        const newTableBindings = this._getUpdatedTableBindings(
-          component.tableBindings,
-          tableSelector,
-          newTableData
-        );
-        return this._processTableBindings({
-          ...component,
-          tableBindings: newTableBindings,
-        });
-      }
-      return component;
-    });
-
-    if (dynamicUpdated) {
-      this._dynamicContent$.next(newDynamicState);
-    }
+    const change = this.reconcile(merged);
+    change.issues.unshift(...issues);
+    return change;
   }
 
-/**
- * Actualiza el valor de un binding en el contenido dinámico o estático
- * con el ID especificado.
- * @param contentId El ID del contenido que contiene el binding a actualizar.
- * @param bindingSelector El selector del binding a actualizar.
- * @param newValue El nuevo valor del binding.
- */
-  public updateBindingValue(
-    contentId: string,
-    bindingSelector: string,
-    newValue: any
-  ): void {
-    const staticState = this._staticContent$.getValue();
-    let updated = false;
-
-    const newStaticState = staticState.map((c) => {
-      if (c.id_DocumentHTMLCSS === contentId && c.dataBindings) {
-        updated = true;
-        return {
-          ...c,
-          dataBindings: c.dataBindings.map((b) =>
-            b.selector === bindingSelector ? { ...b, value: newValue } : b
-          ),
-        };
-      }
-      return c;
-    });
-    if (updated) {
-      this._staticContent$.next(newStaticState);
-      return;
-    }
-
-    const dynamicState = this._dynamicContent$.getValue();
-    const newDynamicState = dynamicState.map((c) => {
-      if (c.id_DocumentHTMLCSS === contentId && c.dataBindings) {
-        return {
-          ...c,
-          dataBindings: c.dataBindings.map((b) =>
-            b.selector === bindingSelector ? { ...b, value: newValue } : b
-          ),
-        };
-      }
-      return c;
-    });
-    this._dynamicContent$.next(newDynamicState);
-  }
-
-
-
+  /** Vacía la pantalla. */
   public clearContent(): void {
-    this._staticContent$.next([]);
-    this._dynamicContent$.next([]);
+    this.sections = [];
+    this.epoch++;
+    this._content$.next([]);
   }
 
-  private _getUpdatedTableBindings(
-    currentBindings: any[],
+  // ---------------------------------------------------------------------------
+  // Cambios en caliente sobre una sección (no vienen del JSON)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Cambia las columnas o los datos de una tabla de una sección. Solo se
+   * actualiza esa sección.
+   */
+  public updateTable(
+    contentId: string,
     tableSelector: string,
-    newTableData: any
-  ) {
+    newTableData: { columns?: TableBindingColumn[]; data?: any[] },
+  ): void {
+    const section = this.sections.find((s) => s.id === contentId);
+    if (!section?.rendered.tableBindings) return;
+
+    this.replaceRendered(
+      section,
+      this._processTableBindings({
+        ...section.rendered,
+        tableBindings: this._getUpdatedTableBindings(section.rendered.tableBindings, tableSelector, newTableData),
+      }),
+    );
+  }
+
+  /** Cambia el valor de un `dataBinding` de una sección. Solo se actualiza esa sección. */
+  public updateBindingValue(contentId: string, bindingSelector: string, newValue: any): void {
+    const section = this.sections.find((s) => s.id === contentId);
+    if (!section?.rendered.dataBindings) return;
+
+    this.replaceRendered(section, {
+      ...section.rendered,
+      dataBindings: section.rendered.dataBindings.map((b) =>
+        b.selector === bindingSelector ? { ...b, value: newValue } : b,
+      ),
+    });
+  }
+
+  private replaceRendered(section: Section, rendered: ApiDrivenContent): void {
+    section.rendered = rendered;
+    this.bumpRevision(section.id);
+    this.publish();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reconciliación: qué hay que volver a pintar
+  // ---------------------------------------------------------------------------
+
+  private applyRaw(rawData: unknown): ContentChange {
+    const parsed = this.parse(rawData);
+    // Un contenido ilegible no debe vaciar la pantalla: se informa y se deja todo como está.
+    if (!parsed.ok) return { mode: 'unchanged', changedIds: [], issues: parsed.issues };
+
+    const { sections, issues } = this.normalize(parsed.sections);
+    const change = this.reconcile(sections);
+    change.issues.unshift(...issues);
+    return change;
+  }
+
+  /**
+   * Compara lo recibido con lo que hay en memoria y actualiza solo lo
+   * necesario:
+   * - Cambió, apareció o desapareció una sección `static`, o se reordenaron
+   *   las estáticas: se recarga TODO.
+   * - Solo cambiaron secciones `dynamic`: se actualiza cada una de ellas y el
+   *   resto conserva su componente (y su estado).
+   * - Nada cambió: no se toca nada.
+   */
+  private reconcile(next: ApiDrivenContent[]): ContentChange {
+    const previous = this.sections;
+
+    if (previous.length === 0 && next.length === 0) {
+      return { mode: 'unchanged', changedIds: [], issues: [] };
+    }
+
+    if (previous.length === 0) {
+      this.sections = next.map((source) => this.createSection(source));
+      this.publish();
+      return { mode: 'initial', changedIds: next.map((s) => s.id_DocumentHTMLCSS), issues: [] };
+    }
+
+    const previousById = new Map(previous.map((section) => [section.id, section]));
+    const nextIds = new Set(next.map((section) => section.id_DocumentHTMLCSS));
+
+    const changedIds = [
+      ...next
+        .filter((source) => {
+          const old = previousById.get(source.id_DocumentHTMLCSS);
+          return !old || !deepEqual(old.source, source);
+        })
+        .map((source) => source.id_DocumentHTMLCSS),
+      ...previous.filter((section) => !nextIds.has(section.id)).map((section) => section.id),
+    ];
+
+    const staticSections = (sources: ApiDrivenContent[]) => sources.filter((s) => s.renderType === 'static');
+    const previousStatic = staticSections(previous.map((section) => section.source));
+    const nextStatic = staticSections(next);
+    const staticChanged =
+      previousStatic.length !== nextStatic.length || previousStatic.some((s, i) => !deepEqual(s, nextStatic[i]));
+
+    if (staticChanged) {
+      this.epoch++;
+      this.sections = next.map((source) => this.createSection(source));
+      this.publish();
+      return { mode: 'reloaded', changedIds, issues: [] };
+    }
+
+    const sameOrder =
+      previous.length === next.length && previous.every((section, i) => section.id === next[i].id_DocumentHTMLCSS);
+
+    if (changedIds.length === 0 && sameOrder) {
+      return { mode: 'unchanged', changedIds: [], issues: [] };
+    }
+
+    const changed = new Set(changedIds);
+    this.sections = next.map((source) => {
+      const old = previousById.get(source.id_DocumentHTMLCSS);
+      if (old && !changed.has(source.id_DocumentHTMLCSS)) return old; // misma sección: mismo componente
+      this.bumpRevision(source.id_DocumentHTMLCSS);
+      return this.createSection(source);
+    });
+    this.publish();
+    return { mode: 'patched', changedIds, issues: [] };
+  }
+
+  private createSection(source: ApiDrivenContent): Section {
+    return { id: source.id_DocumentHTMLCSS, source, rendered: this._processTableBindings(source) };
+  }
+
+  private bumpRevision(id: string): void {
+    this.revisions.set(id, (this.revisions.get(id) ?? 0) + 1);
+  }
+
+  private publish(): void {
+    this._content$.next(this.sections.map((section) => section.rendered));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lectura y validación del contenido recibido
+  // ---------------------------------------------------------------------------
+
+  /** Acepta un arreglo, un texto JSON o `{ content: "<texto JSON>" }`. */
+  private parse(rawData: unknown): { ok: true; sections: unknown[] } | { ok: false; issues: string[] } {
+    try {
+      let value: unknown = rawData;
+      if (typeof value === 'string') value = JSON.parse(value);
+      if (value && !Array.isArray(value) && typeof (value as { content?: unknown }).content === 'string') {
+        value = JSON.parse((value as { content: string }).content);
+      }
+      if (Array.isArray(value)) return { ok: true, sections: value };
+      return { ok: false, issues: ['El contenido recibido no es un arreglo de secciones.'] };
+    } catch (error) {
+      return { ok: false, issues: [`El contenido recibido no es un JSON válido: ${(error as Error).message}`] };
+    }
+  }
+
+  /**
+   * Deja cada sección en un estado renderizable e informa de lo que no lo
+   * estaba, en vez de descartarlo en silencio:
+   * - sin `id_DocumentHTMLCSS`: se le asigna `section-<posición>`;
+   * - `id_DocumentHTMLCSS` repetido: se conserva la primera;
+   * - `renderType` ausente o inválido: se trata como `static`, que es lo
+   *   seguro (cualquier cambio recarga todo).
+   */
+  private normalize(items: unknown[]): { sections: ApiDrivenContent[]; issues: string[] } {
+    const issues: string[] = [];
+    const seen = new Set<string>();
+    const sections: ApiDrivenContent[] = [];
+
+    items.forEach((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        issues.push(`La sección #${index + 1} no es un objeto; se ignora.`);
+        return;
+      }
+
+      const raw = item as Partial<ApiDrivenContent>;
+      let id = typeof raw.id_DocumentHTMLCSS === 'string' ? raw.id_DocumentHTMLCSS.trim() : '';
+      let renderType = raw.renderType;
+      let copy = false;
+
+      if (!id) {
+        id = `section-${index + 1}`;
+        copy = true;
+        issues.push(`La sección #${index + 1} no tiene id_DocumentHTMLCSS; se le asignó "${id}".`);
+      }
+      if (seen.has(id)) {
+        issues.push(`El id_DocumentHTMLCSS "${id}" está repetido; se ignora la sección #${index + 1}.`);
+        return;
+      }
+      seen.add(id);
+
+      if (renderType !== 'static' && renderType !== 'dynamic') {
+        issues.push(
+          `La sección "${id}" no declara renderType 'static' ni 'dynamic' (recibido: ${String(renderType)}); se trata como 'static'.`,
+        );
+        renderType = 'static';
+        copy = true;
+      }
+
+      sections.push(copy ? ({ ...raw, id_DocumentHTMLCSS: id, renderType } as ApiDrivenContent) : (raw as ApiDrivenContent));
+    });
+
+    return { sections, issues };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tablas
+  // ---------------------------------------------------------------------------
+
+  private _getUpdatedTableBindings(currentBindings: any[], tableSelector: string, newTableData: any) {
     return currentBindings.map((table) => {
       if (table.tableSelector !== tableSelector) return table;
       return {
@@ -274,11 +364,8 @@ export class DynamicViewerService {
       const tableElement = container.querySelector(tableBinding.tableSelector);
       if (tableElement) {
         let theadHtml = '<thead><tr>';
-        tableBinding.columns.forEach(
-          (col) => (theadHtml += `<th scope="col">${col.header}</th>`)
-        );
-        if (tableBinding.actions && tableBinding.actions.length > 0)
-          theadHtml += `<th scope="col">Acciones</th>`;
+        tableBinding.columns.forEach((col) => (theadHtml += `<th scope="col">${col.header}</th>`));
+        if (tableBinding.actions && tableBinding.actions.length > 0) theadHtml += `<th scope="col">Acciones</th>`;
         theadHtml += '</tr></thead>';
         let tbodyHtml = '<tbody>';
         tableBinding.data.forEach((row) => {
@@ -291,9 +378,7 @@ export class DynamicViewerService {
             tableBinding.actions.forEach((action) => {
               tbodyHtml += `<button type="button" class="${
                 action.cssClass || 'btn btn-sm'
-              }" data-dynamic-action="${action.action}" data-row-id="${
-                row.id || ''
-              }">${action.label}</button> `;
+              }" data-dynamic-action="${action.action}" data-row-id="${row.id || ''}">${action.label}</button> `;
             });
             tbodyHtml += '</td>';
           }
@@ -310,72 +395,50 @@ export class DynamicViewerService {
         // hay que envolver el fragmento en un <table> propio para que el
         // navegador sí reconstruya la estructura.
         tableElement.innerHTML =
-          tableElement.tagName === 'TABLE'
-            ? theadHtml + tbodyHtml
-            : `<table>${theadHtml}${tbodyHtml}</table>`;
+          tableElement.tagName === 'TABLE' ? theadHtml + tbodyHtml : `<table>${theadHtml}${tbodyHtml}</table>`;
       }
     });
     return { ...content, htmlComponent: container.innerHTML };
   }
 
+  /**
+   * Transforma la respuesta del microservicio en objetos listos para renderizar.
+   * Incluye la sanitización de HTML para evitar bloqueos de seguridad de Angular.
+   */
+  processApiResponse(data: any): DisplayableInAppComponent[] {
+    try {
+      const rawData = typeof data === 'string' ? JSON.parse(data) : data;
 
-    /**
-     * Transforma la respuesta del microservicio en objetos listos para renderizar.
-     * Incluye la sanitización de HTML para evitar bloqueos de seguridad de Angular.
-     */
-    processApiResponse(data: any): DisplayableInAppComponent[] {
-      try {
-        const rawData = typeof data === 'string' ? JSON.parse(data) : data;
-        
-        if (!Array.isArray(rawData)) {
-          console.error("Invalid format: Expected an array of components", rawData);
-          return [];
-        }
-  
-        return rawData.map(item => ({
-          ...item,
-          // Sanitizamos el HTML aquí para que DisplayableInAppComponent sea válido
-          safeHtml: this.sanitizer.bypassSecurityTrustHtml(item.htmlComponent)
-        }));
-      } catch (error) {
-        console.error("Error processing dynamic content JSON:", error);
+      if (!Array.isArray(rawData)) {
+        console.error('Invalid format: Expected an array of components', rawData);
         return [];
       }
-    }
 
-/**
- * Permite cargar contenido directamente desde un objeto o string JSON local,
- * sin realizar peticiones HTTP. Reutiliza la lógica de procesamiento de tablas.
- */
-public setLocalContent(rawData: any): void {
-  let content: ApiDrivenContent[] = [];
-
-  try {
-    // CASO 1: Viene como String puro
-    if (typeof rawData === 'string') {
-      content = JSON.parse(rawData);
-    } 
-    // CASO 2: Viene como la respuesta de la API ({ content: "..." })
-    else if (rawData && rawData.content && typeof rawData.content === 'string') {
-      content = JSON.parse(rawData.content);
+      return rawData.map((item) => ({
+        ...item,
+        // Sanitizamos el HTML aquí para que DisplayableInAppComponent sea válido
+        safeHtml: this.sanitizer.bypassSecurityTrustHtml(item.htmlComponent),
+      }));
+    } catch (error) {
+      console.error('Error processing dynamic content JSON:', error);
+      return [];
     }
-    // CASO 3: Ya es el array de objetos
-    else if (Array.isArray(rawData)) {
-      content = rawData;
-    }
-  } catch (e) {
-    console.error('Error parseando JSON local:', e);
-    return;
   }
-
-  // REUTILIZAMOS LA LÓGICA DE TABLAS (Importante para que se generen los HTMLs)
-  const processedPayloads = content.map(item => this._processTableBindings(item));
-
-  // SEPARAMOS Y ACTUALIZAMOS EL STORE
-  const staticContent = processedPayloads.filter(p => p.renderType === 'static');
-  const dynamicContent = processedPayloads.filter(p => p.renderType === 'dynamic');
-
-  this._staticContent$.next(staticContent);
-  this._dynamicContent$.next(dynamicContent);
 }
+
+/** Igualdad estructural de datos JSON. Las funciones (p. ej. `disableWhen`) se comparan por referencia. */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  const keysA = Object.keys(a as object);
+  const keysB = Object.keys(b as object);
+  if (keysA.length !== keysB.length) return false;
+
+  return keysA.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(b, key) &&
+      deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+  );
 }
