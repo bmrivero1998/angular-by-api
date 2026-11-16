@@ -3,7 +3,9 @@
 Los cambios relevantes de este proyecto se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
-## [Sin publicar]
+## [1.0.0] - 2026-11-16
+
+Primera versión estable: contrato del JSON con JSON Schema y validación, `static` / `dynamic` por sección, formularios con validadores, lógica condicional, estilos aislados y aceptación de cualquier framework CSS, subida de archivos, formularios de varios pasos, autocompletado dinámico, páginas de error y pruebas E2E.
 
 ### Añadido (contrato del JSON)
 
@@ -189,6 +191,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - `DynamicInteractionService` y `Builder.interface.ts`, que no se usaban.
 - Dependencias sin uso: `@angular/router`, `crypto-js`, `concat`, `fs-extra`.
 
-## [1.0.3]
+## [1.0.3] (interna, anterior a 1.0.0)
 
-Versión previa a la reorganización del repositorio.
+Versión previa a la reorganización del repositorio. Nunca se publicó; la numeración se reinicia en 1.0.0.

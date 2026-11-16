@@ -1,6 +1,6 @@
 {
   "name": "ux-driven-viewer",
-  "version": "1.0.3",
+  "version": "1.0.0",
   "description": "Motor de UI dinámica (Backend-Driven UI) empaquetado como custom element de Angular.",
   "scripts": {
     "start": "ng serve playground",
