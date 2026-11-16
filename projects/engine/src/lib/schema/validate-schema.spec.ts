@@ -6,6 +6,7 @@ import formularioBasico from '../../../../../examples/schemas/formulario-basico.
 import formularioCompleto from '../../../../../examples/schemas/formulario-completo.json';
 import landing from '../../../../../examples/schemas/landing.json';
 import pasos from '../../../../../examples/schemas/pasos.json';
+import tailwind from '../../../../../examples/schemas/tailwind.json';
 import secciones from '../../../../../examples/schemas/secciones.json';
 
 /** Una sección mínima válida; cada test la modifica. */
@@ -33,6 +34,7 @@ describe('validateSchema', () => {
       'formulario-completo.json': formularioCompleto,
       'landing.json': landing,
       'pasos.json': pasos,
+      'tailwind.json': tailwind,
       'secciones.json': secciones,
     };
 

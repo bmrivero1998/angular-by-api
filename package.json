@@ -1,7 +1,7 @@
 {
   "name": "ux-driven-viewer",
   "version": "1.0.3",
-  "description": "Motor de UI din\u00e1mica (Backend-Driven UI) empaquetado como custom element de Angular.",
+  "description": "Motor de UI dinámica (Backend-Driven UI) empaquetado como custom element de Angular.",
   "scripts": {
     "start": "ng serve playground",
     "build": "npm run build:engine && npm run build:runtime",
@@ -24,7 +24,6 @@
     "@angular/forms": "^19.2.0",
     "@angular/platform-browser": "^19.2.0",
     "@angular/platform-browser-dynamic": "^19.2.0",
-    "bootstrap": "^5.3.6",
     "dompurify": "^3.4.14",
     "ngx-build-plus": "^19.0.0",
     "rxjs": "~7.8.0",

@@ -32,6 +32,7 @@ Reglas clave:
 - `renderType` es obligatorio y decide cómo se actualiza la sección, no dónde se pinta (el orden es el del arreglo): una `static` recarga toda la pantalla al cambiar; una `dynamic` solo se actualiza a sí misma. Ver [Actualizar el contenido](updating-content.md).
 - `formId`, `formMappings`, `formInitialData` y `buttonConfigs` **solo van** si la sección trae un formulario real. Si no, se omiten del objeto (no se manda `null`).
 - El `cssComponent` queda aislado a su sección automáticamente, sin importar si `renderType` es `"static"` o `"dynamic"`. No hace falta prefijar los selectores (si ya vienen con `.dynamic-` + `id_DocumentHTMLCSS`, se respetan). Ver [Estilos](styling.md).
+- `cssLinks` (opcional) es una lista de hojas de estilo externas que necesita la sección (Bootstrap, Tailwind compilado...). Solo se cargan si son relativas o de un origen de confianza. Ver [Estilos](styling.md#frameworks-css-bootstrap-tailwind-y-otros).
 - Puedes tener **múltiples forms independientes** en el mismo arreglo (cada uno con su propio `formId`) — todos se agregan al mismo `FormGroup` padre sin pisarse.
 - El HTML se sanitiza con `DOMPurify` antes de renderizarse — cualquier `<script>` u `onerror=`/`onclick=` inline se elimina. **No confíes en poder ejecutar JS arbitrario desde el HTML del JSON.**
 

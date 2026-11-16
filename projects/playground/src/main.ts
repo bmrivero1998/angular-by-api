@@ -14,6 +14,7 @@ const EXAMPLES: Record<string, string> = {
   'Formulario de varios pasos': 'schemas/pasos.json',
   'Autocompletado (necesita npm run mock-api)': 'schemas/autocompletado.json',
   'Subida de archivos (necesita npm run mock-api)': 'schemas/archivos.json',
+  'Tailwind (el playground lo carga por CDN)': 'schemas/tailwind.json',
   'Landing estática': 'schemas/landing.json',
   'Formulario básico': 'schemas/formulario-basico.json',
   'Formulario completo': 'schemas/formulario-completo.json',

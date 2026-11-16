@@ -52,7 +52,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | [Validadores y controles](docs/validators.md) | `formMappings`, validadores, `keyFilter`, máscaras, archivos. |
 | [Lógica condicional](docs/conditional-logic.md) | `showIf` / `hideIf`. |
 | [Eventos](docs/events.md) | Qué emite el widget y con qué datos. |
-| [Estilos](docs/styling.md) | Alcance del CSS, Bootstrap, clases de validación. |
+| [Estilos](docs/styling.md) | Alcance del CSS, Bootstrap, Tailwind u otros frameworks (`stylesheets`, `cssLinks`), clases de validación. |
 | [Seguridad](docs/security.md) | Qué se sanitiza y qué no. |
 
 ## Estructura del repositorio
@@ -96,7 +96,7 @@ En estabilización. La estructura y el formato del JSON están definidos y los p
 Ya no queda código sin uso: todo lo que hay en el repositorio se ejecuta o se puede describir en el JSON. Limitaciones reales que siguen vigentes:
 
 - El bundle del custom element incluye Angular completo (no es una librería ligera para páginas sin Angular).
-- Bootstrap no viene incluido: lo aporta la página host (el runtime solo aplica `is-invalid` / `is-valid`).
+- Ningún framework CSS viene incluido: Bootstrap, Tailwind u otro lo aporta la página (`<link>`) o se pide con `stylesheets` / `cssLinks`. Con otro framework, cambia las clases de validación con `error-class` / `success-class`.
 - Los mensajes de validación y de error están en español.
 
 ## Contribuir

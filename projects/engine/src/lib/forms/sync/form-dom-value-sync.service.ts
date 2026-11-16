@@ -36,8 +36,14 @@ export class FormDomValueSyncService {
   private specialControls = inject(FormSpecialControlsService);
   private inputMasking = inject(InputMaskingService);
 
-  private readonly ERROR_CLASSES = (this.config?.errorClassName || 'is-invalid').split(' ');
-  private readonly SUCCESS_CLASSES = (this.config?.successClassName || 'is-valid').split(' ');
+  // Se leen en cada uso (no al construir): el widget puede cambiar las clases
+  // (`error-class` / `success-class`) después de arrancar.
+  private get ERROR_CLASSES(): string[] {
+    return (this.config?.errorClassName || 'is-invalid').split(/\s+/).filter(Boolean);
+  }
+  private get SUCCESS_CLASSES(): string[] {
+    return (this.config?.successClassName || 'is-valid').split(/\s+/).filter(Boolean);
+  }
 
   constructor(rendererFactory: RendererFactory2) {
     this.renderer = rendererFactory.createRenderer(null, null);

@@ -17,6 +17,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - `projects/engine/src/lib/experimental` (navegación dinámica y registro de componentes), que no se exportaba.
 - `HtmlSanitizerInterceptor`, que no se registraba; el HTML ya se sanea con DOMPurify en el widget. Se quitan también las opciones `sanitizationLevel`, `allowedHtmlTags` y `disallowExternalCssResources` de `DYNAMIC_CONFIG`, que solo leía ese interceptor.
 
+### Añadido (estilos con cualquier framework CSS)
+
+- **Atributo `stylesheets`** (o propiedad): el widget carga las hojas que le indiques (Bootstrap, un Tailwind compilado, la de tu marca) una sola vez, sin duplicar las que la página ya tenga. Una hoja caída o lenta (8 s) no bloquea la pantalla.
+- **`cssLinks` en una sección del JSON**: el backend puede pedir hojas externas. Solo se cargan relativas o de un origen de confianza (misma regla que la subida y el autocompletado); si no, se informa por `errorOccurred`.
+- **`error-class` / `success-class`**: clases de validación configurables desde el widget (con Tailwind, `border-red-500`...). Antes solo se podían cambiar desde la librería Angular.
+- Ejemplo `tailwind.json`, y docs en `docs/styling.md` (Tailwind compilado o Play CDN).
+- Verificado en navegador: el Play CDN de Tailwind genera las clases dentro del widget y `stylesheets` carga Bootstrap sin que la página lo incluya.
+
+### Eliminado (Bootstrap del repo)
+
+- Bootstrap ya no es dependencia del repo (ni del playground ni de los tests): el playground lo pide con `stylesheets`.
+
 ### Añadido (formularios de varios pasos)
 
 - **Stepper dirigido por el HTML** de la sección, sin configuración aparte: `data-dynamic-stepper` en un contenedor, `data-dynamic-step="id"` en cada paso y botones con `data-dynamic-action="next_step"` / `"previous_step"`. Ver `docs/steppers.md`.

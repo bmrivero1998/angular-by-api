@@ -7,6 +7,7 @@ import {
 export interface ApiDrivenContent {
   htmlComponent: string; // El HTML crudo
   cssComponent?: string; // El CSS para este contenido
+  cssLinks?: string[]; // Hojas de estilo externas que necesita la sección (Bootstrap, Tailwind compilado...). Solo se cargan desde orígenes de confianza.
   id_DocumentHTMLCSS: string; // Un ID único para este bloque de contenido/CSS
   configuracion?: string; // Configuración adicional, como un ID de formulario o nombre
   formId?: string; // Un ID específico para el formulario (si es diferente de id_DocumentHTMLCSS)

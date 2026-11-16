@@ -82,6 +82,7 @@ const SECTION_SPEC: Spec = {
   renderType: { kind: 'string', enum: ['static', 'dynamic'] },
   htmlComponent: 'string',
   cssComponent: 'string',
+  cssLinks: 'array',
   configuracion: 'string',
   dynamicContentId: 'string',
   formId: 'string',

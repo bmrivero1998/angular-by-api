@@ -20,6 +20,7 @@
         },
         "htmlComponent": { "type": "string", "description": "HTML de la sección (se sanitiza antes de pintarse)." },
         "cssComponent": { "type": "string", "description": "CSS de la sección; queda aislado a ella." },
+        "cssLinks": { "type": "array", "items": { "type": "string" }, "description": "Hojas de estilo externas (Bootstrap, Tailwind compilado...). Solo se cargan si son relativas o de un origen de confianza." },
         "configuracion": { "type": "string" },
         "dynamicContentId": { "type": "string" },
         "formId": { "type": "string", "description": "Identificador del formulario de la sección." },

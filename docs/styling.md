@@ -4,8 +4,47 @@
 
 El widget no trae diseño propio. Todo el aspecto de una sección viene de su `cssComponent`, más el framework CSS que cargue la página host.
 
-- **Bootstrap lo pone el host.** Si tu HTML usa clases de Bootstrap, la página debe cargar su CSS (y su JS si usas `data-bs-*`). Ver [Primeros pasos](getting-started.md).
+- **El widget no incluye ningún framework CSS.** Usa el que quieras (Bootstrap, Tailwind, Bulma, el tuyo...) y entrégaselo de una de estas formas, ver [Frameworks CSS](#frameworks-css-bootstrap-tailwind-y-otros).
 - **Layout.** El widget coloca las secciones en un grid de 12 columnas. Cada sección ocupa las 12 salvo que indique otra cosa en `otros.source.colSpan`. El atributo `grid-gap` define la separación.
+
+## Frameworks CSS (Bootstrap, Tailwind y otros)
+
+El widget no usa Shadow DOM, así que **cualquier hoja que esté en la página aplica dentro de él**, igual que en el resto de tu HTML. Hay tres formas de entregársela:
+
+| Forma | Quién decide | Cuándo usarla |
+|---|---|---|
+| `<link>` o `<script>` en tu página | El host | Lo normal: tu página ya usa el framework. |
+| Atributo `stylesheets="url1 url2"` (o propiedad `viewer.stylesheets = [...]`) | El host | El widget carga la hoja por ti, una sola vez, aunque haya varios widgets. |
+| `cssLinks: ["https://..."]` en una sección del JSON | El backend | El contenido trae sus propias hojas. Solo se cargan si son relativas o de un origen de confianza. |
+
+```html
+<!-- Bootstrap, cargado por el widget -->
+<ux-driven-viewer api-url="/api/pantalla"
+  stylesheets="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"></ux-driven-viewer>
+```
+
+- Una hoja que ya está en el `<head>` no se vuelve a añadir; una que falla o tarda más de 8 s se salta (con un aviso en consola) y nunca bloquea la pantalla.
+- Solo se cargan URLs `http(s)` o relativas. Las hojas son **globales y se quedan** mientras la página viva.
+- `cssLinks` sigue la misma regla que el resto de URLs del JSON (ver [Seguridad](security.md#a-dónde-se-pueden-enviar-datos)): un origen que no sea el de la página, `api-url` o `allowed-origins` se rechaza, no se carga y se informa por `errorOccurred`. Un CSS externo puede pedir imágenes y fuentes a otros sitios, por eso no se acepta cualquiera.
+
+### Tailwind
+
+Funciona de dos maneras:
+
+1. **Compilado (recomendado en producción).** Genera tu CSS con la CLI de Tailwind apuntando a tus plantillas de JSON/HTML y cárgalo con `stylesheets` o un `<link>`. Ten en cuenta que Tailwind solo incluye las clases que ve al compilar: si el backend inventa clases nuevas, hay que recompilar.
+2. **Play CDN (pruebas).** `<script src="https://cdn.tailwindcss.com"></script>` en tu página: observa el DOM y genera las clases que aparezcan, también las del widget. Ver [`examples/schemas/tailwind.json`](../examples/schemas/tailwind.json) y [`examples/demo.html`](../examples/demo.html).
+
+No funcionaría con Shadow DOM (el Play CDN no ve dentro de él): es una de las razones de que el widget no lo use.
+
+### Clases de validación
+
+Por defecto el motor marca los campos con `is-invalid` / `is-valid` (Bootstrap). Con otro framework cámbialas con atributos:
+
+```html
+<ux-driven-viewer error-class="border-red-500 ring-2 ring-red-500" success-class="border-green-500"></ux-driven-viewer>
+```
+
+Aceptan varias clases separadas por espacio. Son **de todo el bundle**: si pones dos widgets en la página con clases distintas, gana el último en leerse.
 
 ## Alcance del `cssComponent`
 
@@ -53,7 +92,7 @@ El motor marca cada campo según su estado:
 | Válido (tras interactuar) | `is-valid` |
 | Deshabilitado | `disabled` |
 
-Son las clases de Bootstrap. Si integras el motor como librería Angular puedes cambiarlas con `DYNAMIC_CONFIG` (`errorClassName`, `successClassName`), por ejemplo para Tailwind.
+Son las clases de Bootstrap. Se cambian con `error-class` / `success-class` en el widget (ver arriba) o, como librería Angular, con `DYNAMIC_CONFIG` (`errorClassName`, `successClassName`).
 
 El texto del error se escribe en el elemento indicado por `errorDisplaySelector` de cada mapping; ver [validators.md](validators.md).
 
