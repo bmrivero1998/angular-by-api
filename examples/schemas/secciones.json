@@ -1,0 +1,24 @@
+[
+  {
+    "id_DocumentHTMLCSS": "nav",
+    "renderType": "static",
+    "htmlComponent": "<nav class=\"navbar navbar-dark bg-dark px-3\"><span class=\"navbar-brand\">Mi sitio</span><span class=\"navbar-text\">static: cambiarla recarga toda la pantalla</span></nav>"
+  },
+  {
+    "id_DocumentHTMLCSS": "datos",
+    "renderType": "dynamic",
+    "formId": "datos",
+    "htmlComponent": "<form class=\"p-3\"><label class=\"form-label\" for=\"nombre\">Escribe algo aquí (se conserva si actualizas otra dinámica, se pierde si cambias una estática)</label><input id=\"nombre\" name=\"nombre\" class=\"form-control\" /></form>",
+    "formMappings": [{ "controlName": "nombre", "domSelector": "#nombre" }]
+  },
+  {
+    "id_DocumentHTMLCSS": "novedades",
+    "renderType": "dynamic",
+    "htmlComponent": "<div class=\"alert alert-info m-3\"><strong>novedades</strong> (dynamic): <span>Sin novedades.</span></div>"
+  },
+  {
+    "id_DocumentHTMLCSS": "pie",
+    "renderType": "static",
+    "htmlComponent": "<footer class=\"p-3 text-center text-muted\">Pie de página: es static y va último en el JSON, así que se pinta al final.</footer>"
+  }
+]

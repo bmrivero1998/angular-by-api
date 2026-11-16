@@ -7,7 +7,8 @@ import {
   OnDestroy,
   OnChanges,
   SimpleChanges,
-  HostListener
+  HostListener,
+  ElementRef
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractControl, FormGroup, PristineChangeEvent, ReactiveFormsModule, TouchedChangeEvent } from '@angular/forms';
@@ -16,7 +17,7 @@ import { Observable, Subscription, filter, finalize, take, debounceTime } from '
 // Imports de tu librería
 import { DynamicViewerComponent, ControlChangeEvent } from '@ux-driven-viewer/engine';
 import { ApiDrivenContent, DynamicClickPayload } from '@ux-driven-viewer/engine';
-import { DynamicViewerService } from '../content/dynamic-viewer.service';
+import { ContentChange, DynamicViewerService } from '../content/dynamic-viewer.service';
 import { ModalService } from '../modal/modal.service';
 import { FilePayload } from '@ux-driven-viewer/engine';
 
@@ -36,6 +37,9 @@ export interface FormStateSnapshot {
   standalone: true,
   imports: [CommonModule, DynamicViewerComponent, ReactiveFormsModule],
   templateUrl: './ux-driven-viewer.component.html',
+  // Un servicio de contenido por widget: dos <ux-driven-viewer> en la misma
+  // página no comparten secciones en memoria.
+  providers: [DynamicViewerService],
   // Encapsulación por default (Emulated): cualquier estilo de este componente
   // queda scoped a él mismo, nunca se fuga a la página host. El diseño real
   // de cada sección SIEMPRE viene de `cssComponent` en el JSON — este
@@ -99,6 +103,14 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Output() errorOccurred = new EventEmitter<string>();
   @Output() ready = new EventEmitter<boolean>();
   @Output() fileSelected = new EventEmitter<FilePayload>();
+  /**
+   * Cada vez que cambia el contenido en pantalla. `detail.mode` indica qué
+   * pasó: `initial` (primera carga), `patched` (solo se actualizaron las
+   * secciones dynamic de `detail.changedIds`) o `reloaded` (cambió una
+   * sección static: se recargó toda la pantalla). Si el contenido recibido es
+   * idéntico al que hay, no se emite nada.
+   */
+  @Output() contentUpdated = new EventEmitter<ContentChange>();
 
   /** Cada vez que CUALQUIER control de CUALQUIER sub-form cambia (valor o estado). */
   @Output() controlChanged = new EventEmitter<ControlChangeEvent>();
@@ -108,9 +120,12 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   // --------------------------------------------------------
   // Estado Interno
   // --------------------------------------------------------
-  public staticContent$: Observable<ApiDrivenContent[]>;
-  public dynamicContent$: Observable<ApiDrivenContent[]>;
+  /** Secciones a pintar, en el orden del JSON. */
+  public content$: Observable<ApiDrivenContent[]>;
+  /** Solo es verdadero durante la primera carga por API, cuando todavía no hay nada que mostrar. */
   public isLoading = false;
+  /** Evita pedir el contenido dos veces: lo dispara tanto ngOnChanges como ngOnInit. */
+  private initialContentRequested = false;
   public formGroup: FormGroup = new FormGroup({});
   /** Controla la visibilidad del botón "volver arriba" — vive en el propio widget (código confiable), no en el HTML dinámico del JSON, porque ese HTML pasa por DOMPurify y nunca ejecuta <script>. */
   public showBackToTopButton = false;
@@ -136,10 +151,29 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
 
   constructor(
     private dws: DynamicViewerService,
-    private modalService: ModalService
+    private modalService: ModalService,
+    host: ElementRef<HTMLElement>
   ) {
-    this.staticContent$ = this.dws.staticContent$;
-    this.dynamicContent$ = this.dws.dynamicContent$;
+    this.content$ = this.dws.content$;
+    this.exposeHostApi(host.nativeElement);
+  }
+
+  /** Identidad de cada sección para el `trackBy` de la plantilla. */
+  public trackSection = (index: number, item: ApiDrivenContent): string => this.dws.trackSection(index, item);
+
+  /**
+   * Los métodos de un componente no son accesibles desde el custom element,
+   * solo sus inputs y outputs. Se publican en el propio elemento para que el
+   * host pueda llamarlos:
+   *
+   *   viewer.updateSections([...])   // actualiza secciones concretas
+   *   viewer.refresh()               // vuelve a pedir el contenido a api-url
+   */
+  private exposeHostApi(element: HTMLElement): void {
+    Object.defineProperties(element, {
+      updateSections: { value: (sections: unknown) => this.updateSections(sections), configurable: true },
+      refresh: { value: () => this.refresh(), configurable: true },
+    });
   }
 
   ngOnInit(): void {
@@ -155,16 +189,14 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     const apiChange = changes['apiUrl'];
 
     if (jsonChange && this.localSchema) {
-       this.isLoading = true;
-       setTimeout(() => {
-           this.dws.setLocalContent(this.localSchema);
-           this.handleDataPatching();
-           this.isLoading = false;
-           this.ready.emit(true);
-       }, 0);
+       // Lo recibido se compara contra lo que ya hay en memoria: no se recarga
+       // todo cada vez que el host vuelve a asignar localSchema.
+       this.initialContentRequested = true;
+       this.applyChange(this.dws.setLocalContent(this.localSchema));
     }
     else if (apiChange && !this.localSchema) {
        if (this.apiUrl && this.apiUrl.trim().length > 0) {
+          this.initialContentRequested = true;
           this.loadDataFromApi();
        }
     }
@@ -198,8 +230,26 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     this.formStateSub?.unsubscribe();
   }
 
+  /**
+   * Vuelve a pedir el contenido a `api-url` y lo compara con lo que hay en
+   * pantalla: solo se actualiza lo que cambió (ver `contentUpdated`).
+   */
   public refresh(): void {
     if (this.apiUrl) this.loadData();
+  }
+
+  /**
+   * Actualiza secciones concretas sin reenviar toda la pantalla. Cada sección
+   * recibida reemplaza a la que tiene su mismo `id_DocumentHTMLCSS` (las
+   * nuevas se agregan al final):
+   * - si es `dynamic`, solo se actualiza esa sección y las demás conservan su
+   *   estado;
+   * - si es `static`, se recarga la pantalla completa.
+   */
+  public updateSections(sections: unknown): ContentChange {
+    const change = this.dws.updateSections(sections);
+    this.applyChange(change);
+    return change;
   }
 
   // --- TELEMETRÍA CENTRALIZADA ---
@@ -256,22 +306,46 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
 
   // --- LOGICA DE CARGA ---
   private loadData(): void {
-    this.isLoading = true;
+    // El spinner solo tiene sentido la primera vez: al volver a cargar, lo que
+    // ya está en pantalla se queda hasta que llegue la respuesta.
+    const firstLoad = this.dws.getContentValue().length === 0;
+    if (firstLoad) this.isLoading = true;
+
+    let readyEmitted = false;
     const sub = this.dws.loadInitialContent(this.apiUrl!)
       .pipe(finalize(() => {
         this.isLoading = false;
-        this.ready.emit(true);
-        if (this.initialData) {
-            setTimeout(() => this.setFormValues(this.initialData), 100);
-        }
+        // Compatibilidad: `ready` también se emitía cuando la primera carga fallaba.
+        if (firstLoad && !readyEmitted) this.ready.emit(true);
       }))
       .subscribe({
+        next: (change) => {
+          readyEmitted = change.mode === 'initial' || change.mode === 'reloaded';
+          this.applyChange(change);
+        },
         error: (err) => {
           console.error('[UXWidget] Error:', err);
           this.errorOccurred.emit('Error cargando configuración dinámica');
         }
       });
     this.subs.add(sub);
+  }
+
+  /**
+   * Informa al host de lo que pasó con el contenido recibido. `ready` solo se
+   * emite cuando la pantalla se pintó completa (primera carga o recarga).
+   */
+  private applyChange(change: ContentChange): void {
+    change.issues.forEach((issue) => this.errorOccurred.emit(issue));
+    if (change.mode === 'unchanged') return;
+
+    this.contentUpdated.emit(change);
+    this.logDebug('contentUpdated', change);
+
+    if (change.mode === 'initial' || change.mode === 'reloaded') {
+      this.handleDataPatching();
+      this.ready.emit(true);
+    }
   }
 
   private loadDataFromApi(): void {
@@ -387,11 +461,13 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   }
 
   private initContentStrategy(): void {
+      if (this.initialContentRequested) return;
+
       if (this.localSchema) {
-          this.dws.setLocalContent(this.localSchema);
-          this.handleDataPatching();
-          this.ready.emit(true);
+          this.initialContentRequested = true;
+          this.applyChange(this.dws.setLocalContent(this.localSchema));
       } else if (this.apiUrl && this.apiUrl.trim().length > 0) {
+          this.initialContentRequested = true;
           this.loadDataFromApi();
       }
   }

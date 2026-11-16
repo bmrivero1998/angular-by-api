@@ -19,7 +19,13 @@ viewer.addEventListener('formStateChanged', (e) => {
   // e.detail = { value, valid, invalid, dirty, pristine, touched, pending }
   // Snapshot del FormGroup COMPLETO (todas las secciones combinadas), debounced.
 });
+viewer.addEventListener('contentUpdated', (e) => {
+  // e.detail = { mode: 'initial' | 'patched' | 'reloaded', changedIds, issues }
+  // Cambió el contenido en pantalla. Ver "Actualizar el contenido".
+});
 ```
+
+`ready` se emite cuando la pantalla se pinta completa: en la primera carga y en cada recarga completa (cambió una sección `static`), no al actualizar una sección `dynamic`. Ver [Actualizar el contenido](updating-content.md).
 
 ## `formSubmit`
 

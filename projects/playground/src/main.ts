@@ -10,6 +10,7 @@ import '../../runtime/src/main';
 
 /** Esquemas servidos desde examples/schemas (ver `assets` en angular.json). */
 const EXAMPLES: Record<string, string> = {
+  'Static y dynamic (actualizar secciones)': 'schemas/secciones.json',
   'Landing estática': 'schemas/landing.json',
   'Formulario básico': 'schemas/formulario-basico.json',
   'Formulario completo': 'schemas/formulario-completo.json',
@@ -24,15 +25,32 @@ const WIDGET_EVENTS = [
   'fileSelected',
   'controlChanged',
   'formStateChanged',
+  'contentUpdated',
 ];
 
-type ViewerElement = HTMLElement & { localSchema?: unknown };
+interface Section {
+  id_DocumentHTMLCSS: string;
+  renderType: 'static' | 'dynamic';
+  htmlComponent: string;
+}
+
+type ViewerElement = HTMLElement & {
+  localSchema?: unknown;
+  /** Lo publica el widget en el propio elemento (ver docs/updating-content.md). */
+  updateSections?: (sections: unknown) => { mode: string; changedIds: string[]; issues: string[] };
+};
 
 const viewer = document.getElementById('pg-viewer') as ViewerElement;
 const select = document.getElementById('pg-example') as HTMLSelectElement;
 const status = document.getElementById('pg-status') as HTMLElement;
 const eventList = document.getElementById('pg-events') as HTMLOListElement;
 const clearButton = document.getElementById('pg-clear') as HTMLButtonElement;
+const patchButton = document.getElementById('pg-patch') as HTMLButtonElement;
+const staticButton = document.getElementById('pg-static') as HTMLButtonElement;
+const resendButton = document.getElementById('pg-resend') as HTMLButtonElement;
+
+/** Lo último que se le envió al widget, para poder modificar una sección y reenviar. */
+let currentSchema: Section[] = [];
 
 function describe(detail: unknown): string {
   try {
@@ -59,19 +77,62 @@ async function loadExample(url: string): Promise<void> {
   try {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    viewer.localSchema = await response.json();
+    currentSchema = await response.json();
+    viewer.localSchema = structuredClone(currentSchema);
     status.textContent = url;
   } catch (error) {
     status.textContent = `No se pudo cargar ${url}: ${String(error)}`;
   }
 }
 
+/**
+ * Modifica una sección (le pone una marca de hora) y se la manda al widget con
+ * `updateSections`: una `dynamic` solo actualiza esa sección; una `static`
+ * recarga toda la pantalla. Compáralo escribiendo algo en el formulario antes.
+ */
+function changeSection(renderType: Section['renderType']): void {
+  const candidates = currentSchema.filter((section) => section.renderType === renderType);
+  const target = renderType === 'dynamic' ? candidates[candidates.length - 1] : candidates[0];
+  if (!target || !viewer.updateSections) {
+    status.textContent = `No hay ninguna sección ${renderType} en este ejemplo.`;
+    return;
+  }
+
+  const stamp = `<small class="pg-stamp"> · actualizada ${new Date().toLocaleTimeString()}</small>`;
+  target.htmlComponent = target.htmlComponent.replace(/<small class="pg-stamp">.*?<\/small>/, '');
+  target.htmlComponent = target.htmlComponent.replace(/(<\/(?:span|footer|nav|div|p|form)>)$/, `${stamp}$1`);
+
+  viewer.updateSections([structuredClone(target)]);
+}
+
+patchButton.addEventListener('click', () => changeSection('dynamic'));
+staticButton.addEventListener('click', () => changeSection('static'));
+resendButton.addEventListener('click', () => {
+  const eventsBefore = eventList.childElementCount;
+  viewer.localSchema = structuredClone(currentSchema);
+
+  // Si el contenido es idéntico al que hay, el widget no emite nada: se dice
+  // explícitamente para que no parezca que el estado anterior sigue vigente.
+  setTimeout(() => {
+    const emitted = Array.from(eventList.children)
+      .slice(0, eventList.childElementCount - eventsBefore)
+      .some((item) => item.textContent?.startsWith('contentUpdated'));
+    if (!emitted) status.textContent = 'Reenviado el mismo JSON: sin cambios (no se emitió contentUpdated)';
+  }, 150);
+});
+
 for (const [label, url] of Object.entries(EXAMPLES)) {
   select.add(new Option(label, url));
 }
 
 WIDGET_EVENTS.forEach((name) =>
-  viewer.addEventListener(name, (event) => logEvent(name, (event as CustomEvent).detail)),
+  viewer.addEventListener(name, (event) => {
+    const detail = (event as CustomEvent).detail;
+    logEvent(name, detail);
+    if (name === 'contentUpdated') {
+      status.textContent = `contentUpdated: ${detail.mode}${detail.changedIds.length ? ' · ' + detail.changedIds.join(', ') : ''}`;
+    }
+  }),
 );
 select.addEventListener('change', () => loadExample(select.value));
 clearButton.addEventListener('click', () => eventList.replaceChildren());

@@ -1,10 +1,19 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { DynamicViewerService } from '../content/dynamic-viewer.service';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { ContentChange, DynamicViewerService } from '../content/dynamic-viewer.service';
 import { ModalService } from '../modal/modal.service';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { SimpleChange, SimpleChanges } from '@angular/core';
 import { UXDrivenViewerWidgetComponent } from './ux-driven-viewer.component';
+
+const UNCHANGED: ContentChange = { mode: 'unchanged', changedIds: [], issues: [] };
+const change = (mode: ContentChange['mode'], changedIds: string[] = [], issues: string[] = []): ContentChange => ({
+  mode,
+  changedIds,
+  issues,
+});
 
 /**
  * Nota: este spec fue reescrito porque apuntaba a nombres de Inputs/Outputs
@@ -23,23 +32,24 @@ describe('UXDrivenViewerWidgetComponent', () => {
   let modalServiceSpy: jasmine.SpyObj<ModalService>;
 
   beforeEach(async () => {
-    dwsSpy = jasmine.createSpyObj('DynamicViewerService', ['loadInitialContent', 'setLocalContent'], {
-      staticContent$: of([]),
-      dynamicContent$: of([]),
-    });
-
     modalServiceSpy = jasmine.createSpyObj('ModalService', ['open', 'close']);
 
     await TestBed.configureTestingModule({
       imports: [UXDrivenViewerWidgetComponent, ReactiveFormsModule],
-      providers: [
-        { provide: DynamicViewerService, useValue: dwsSpy },
-        { provide: ModalService, useValue: modalServiceSpy },
-      ],
+      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: ModalService, useValue: modalServiceSpy }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(UXDrivenViewerWidgetComponent);
     component = fixture.componentInstance;
+
+    // El servicio de contenido es del propio componente (uno por widget, no un
+    // singleton): se toma de su injector y se espían los métodos que usa.
+    const dws = fixture.debugElement.injector.get(DynamicViewerService);
+    spyOn(dws, 'loadInitialContent');
+    spyOn(dws, 'setLocalContent').and.returnValue(UNCHANGED);
+    spyOn(dws, 'updateSections').and.returnValue(UNCHANGED);
+    spyOn(dws, 'getContentValue').and.returnValue([]);
+    dwsSpy = dws as unknown as jasmine.SpyObj<DynamicViewerService>;
   });
 
   it('should create', () => {
@@ -67,7 +77,7 @@ describe('UXDrivenViewerWidgetComponent', () => {
 
     it('should initialize content from API if URL provided and no local schema', () => {
       component.apiUrl = 'init-api';
-      dwsSpy.loadInitialContent.and.returnValue(of([]));
+      dwsSpy.loadInitialContent.and.returnValue(of(UNCHANGED));
 
       component.ngOnInit();
 
@@ -77,24 +87,22 @@ describe('UXDrivenViewerWidgetComponent', () => {
 
   // --- 2. CAMBIOS EN INPUTS (ngOnChanges) ---
   describe('ngOnChanges', () => {
-    it('should process new local schema when localSchema input changes', fakeAsync(() => {
+    it('should process new local schema when localSchema input changes', () => {
       component.localSchema = [{ id: 'new' }];
       const changes: SimpleChanges = {
         localSchema: new SimpleChange(null, component.localSchema, false),
       };
 
       component.ngOnChanges(changes);
-      expect(component.isLoading).toBeTrue();
 
-      tick(0); // Resuelve el setTimeout(0)
-
-      expect(dwsSpy.setLocalContent).toHaveBeenCalled();
+      // Sin spinner ni setTimeout: se compara contra lo que hay en memoria y se aplica al momento.
+      expect(dwsSpy.setLocalContent).toHaveBeenCalledWith(component.localSchema);
       expect(component.isLoading).toBeFalse();
-    }));
+    });
 
     it('should reload from API when apiUrl changes', () => {
       component.apiUrl = 'updated-url';
-      dwsSpy.loadInitialContent.and.returnValue(of([]));
+      dwsSpy.loadInitialContent.and.returnValue(of(UNCHANGED));
       const changes: SimpleChanges = {
         apiUrl: new SimpleChange('old', 'updated-url', false),
       };
@@ -166,7 +174,7 @@ describe('UXDrivenViewerWidgetComponent', () => {
   describe('Public Methods & Error Handling', () => {
     it('should call loadInitialContent on refresh()', () => {
       component.apiUrl = 'refresh-url';
-      dwsSpy.loadInitialContent.and.returnValue(of([]));
+      dwsSpy.loadInitialContent.and.returnValue(of(UNCHANGED));
 
       component.refresh();
       expect(dwsSpy.loadInitialContent).toHaveBeenCalled();
@@ -343,6 +351,165 @@ describe('UXDrivenViewerWidgetComponent', () => {
       component.handleControlValueChange(event);
 
       expect(component.controlChanged.emit).toHaveBeenCalledWith(event);
+    });
+  });
+
+  // --- CONTENIDO: eventos, spinner y llamadas al servicio ---
+  describe('contenido: eventos y carga', () => {
+    let updated: ContentChange[];
+    let readyCount: number;
+    let errors: string[];
+
+    beforeEach(() => {
+      updated = [];
+      readyCount = 0;
+      errors = [];
+      component.contentUpdated.subscribe((c) => updated.push(c));
+      component.ready.subscribe(() => readyCount++);
+      component.errorOccurred.subscribe((e) => errors.push(e));
+    });
+
+    const load = (result: ContentChange) => {
+      component.localSchema = [{ id: 'x' }];
+      dwsSpy.setLocalContent.and.returnValue(result);
+      component.ngOnChanges({ localSchema: new SimpleChange(null, component.localSchema, false) });
+    };
+
+    it('la primera carga (initial) emite contentUpdated y ready', () => {
+      load(change('initial', ['a']));
+
+      expect(updated).toEqual([change('initial', ['a'])]);
+      expect(readyCount).toBe(1);
+    });
+
+    it('una recarga completa (reloaded) emite contentUpdated y ready', () => {
+      load(change('reloaded', ['nav']));
+
+      expect(updated.length).toBe(1);
+      expect(readyCount).toBe(1);
+    });
+
+    it('una actualización parcial (patched) emite contentUpdated pero NO ready', () => {
+      load(change('patched', ['news']));
+
+      expect(updated).toEqual([change('patched', ['news'])]);
+      expect(readyCount).toBe(0);
+    });
+
+    it('si el contenido no cambió no emite nada', () => {
+      load(change('unchanged'));
+
+      expect(updated).toEqual([]);
+      expect(readyCount).toBe(0);
+    });
+
+    it('informa cada problema del contenido por errorOccurred, aunque no haya cambios', () => {
+      load(change('unchanged', [], ['sin renderType', 'id repetido']));
+
+      expect(errors).toEqual(['sin renderType', 'id repetido']);
+    });
+
+    it('con localSchema no aplica el contenido dos veces (ngOnChanges y ngOnInit)', () => {
+      component.localSchema = [{ id: 'x' }];
+
+      component.ngOnChanges({ localSchema: new SimpleChange(null, component.localSchema, true) });
+      component.ngOnInit();
+
+      expect(dwsSpy.setLocalContent).toHaveBeenCalledTimes(1);
+    });
+
+    it('con api-url no pide el contenido dos veces (ngOnChanges y ngOnInit)', () => {
+      component.apiUrl = 'api';
+      dwsSpy.loadInitialContent.and.returnValue(of(change('initial')));
+
+      component.ngOnChanges({ apiUrl: new SimpleChange(null, 'api', true) });
+      component.ngOnInit();
+
+      expect(dwsSpy.loadInitialContent).toHaveBeenCalledTimes(1);
+    });
+
+    it('en la primera carga por API muestra el spinner hasta que llega la respuesta', () => {
+      const response$ = new Subject<ContentChange>();
+      dwsSpy.loadInitialContent.and.returnValue(response$);
+      component.apiUrl = 'api';
+
+      component.refresh();
+      expect(component.isLoading).toBeTrue();
+
+      response$.next(change('initial', ['a']));
+      response$.complete();
+
+      expect(component.isLoading).toBeFalse();
+      expect(readyCount).toBe(1);
+    });
+
+    it('al volver a cargar con contenido en pantalla NO muestra el spinner', () => {
+      dwsSpy.getContentValue.and.returnValue([{ id_DocumentHTMLCSS: 'a', renderType: 'static', htmlComponent: '' }]);
+      const response$ = new Subject<ContentChange>();
+      dwsSpy.loadInitialContent.and.returnValue(response$);
+      component.apiUrl = 'api';
+
+      component.refresh();
+
+      expect(component.isLoading).toBeFalse();
+      response$.next(change('patched', ['a']));
+      response$.complete();
+      expect(updated.length).toBe(1);
+      expect(readyCount).toBe(0);
+    });
+
+    it('si la primera carga falla emite errorOccurred y, por compatibilidad, ready', () => {
+      spyOn(console, 'error');
+      dwsSpy.loadInitialContent.and.returnValue(throwError(() => new Error('boom')));
+      component.apiUrl = 'api';
+
+      component.refresh();
+
+      expect(errors.length).toBe(1);
+      expect(readyCount).toBe(1);
+    });
+
+    it('si falla al volver a cargar no emite ready y deja el contenido como estaba', () => {
+      spyOn(console, 'error');
+      dwsSpy.getContentValue.and.returnValue([{ id_DocumentHTMLCSS: 'a', renderType: 'static', htmlComponent: '' }]);
+      dwsSpy.loadInitialContent.and.returnValue(throwError(() => new Error('boom')));
+      component.apiUrl = 'api';
+
+      component.refresh();
+
+      expect(errors.length).toBe(1);
+      expect(readyCount).toBe(0);
+    });
+  });
+
+  // --- updateSections y API publicada en el elemento ---
+  describe('updateSections y métodos del elemento', () => {
+    it('updateSections delega en el servicio, emite contentUpdated y devuelve el resultado', () => {
+      const result = change('patched', ['news']);
+      dwsSpy.updateSections.and.returnValue(result);
+      const emitted: ContentChange[] = [];
+      component.contentUpdated.subscribe((c) => emitted.push(c));
+
+      const returned = component.updateSections([{ id_DocumentHTMLCSS: 'news' }]);
+
+      expect(dwsSpy.updateSections).toHaveBeenCalledWith([{ id_DocumentHTMLCSS: 'news' }]);
+      expect(returned).toBe(result);
+      expect(emitted).toEqual([result]);
+    });
+
+    it('publica updateSections y refresh en el propio elemento para que el host los llame', () => {
+      const element = fixture.nativeElement as HTMLElement & { updateSections: (s: unknown) => ContentChange; refresh: () => void };
+      dwsSpy.updateSections.and.returnValue(change('patched', ['a']));
+
+      const result = element.updateSections([{ id_DocumentHTMLCSS: 'a' }]);
+
+      expect(result.mode).toBe('patched');
+      expect(dwsSpy.updateSections).toHaveBeenCalled();
+
+      component.apiUrl = 'api';
+      dwsSpy.loadInitialContent.and.returnValue(of(UNCHANGED));
+      element.refresh();
+      expect(dwsSpy.loadInitialContent).toHaveBeenCalledWith('api');
     });
   });
 });
