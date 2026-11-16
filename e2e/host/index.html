@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Host e2e</title>
+  <style>
+    /* Regla del host: debe filtrarse DENTRO del widget (no hay Shadow DOM) pero no al revés. */
+    h1 { color: rgb(255, 0, 0); }
+    #host-probe { color: rgb(0, 0, 255); }
+  </style>
+</head>
+<body>
+  <h1 id="host-h1">Host</h1>
+  <p id="host-probe">Párrafo del host</p>
+  <ux-driven-viewer id="viewer"></ux-driven-viewer>
+  <script>
+    // Los listeners van ANTES del bundle para no perder 'ready'.
+    window.__events = [];
+    var viewer = document.getElementById('viewer');
+    var params = new URLSearchParams(location.search);
+    if (params.get('api')) viewer.setAttribute('api-url', params.get('api'));
+    if (params.get('noErrorPage')) viewer.setAttribute('show-error-page', 'false');
+    ['ready', 'contentUpdated', 'stepChanged', 'formSubmit', 'fileUploadChanged', 'errorOccurred', 'actionTriggered'].forEach(function (name) {
+      viewer.addEventListener(name, function (e) {
+        var detail;
+        try { detail = JSON.parse(JSON.stringify(e.detail, function (k, v) { return v instanceof Node || v instanceof Event ? '[' + v.constructor.name + ']' : v; })); }
+        catch (err) { detail = String(e.detail); }
+        window.__events.push({ name: name, detail: detail });
+      });
+    });
+  </script>
+  <script src="/widget.js"></script>
+</body>
+</html>

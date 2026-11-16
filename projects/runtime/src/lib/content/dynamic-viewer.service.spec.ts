@@ -749,4 +749,39 @@ describe('DynamicViewerService', () => {
       expect(keys()[0]).not.toBe(keyBefore);
     });
   });
+
+  describe('contrato del JSON (avisos)', () => {
+    const withBadSelector = (): ApiDrivenContent => ({
+      ...section('s1', 'dynamic', '<input id="a">'),
+      formId: 'f',
+      formMappings: [{ controlName: 'a', domSelector: '#nada', validatorConfig: [{ type: 'telefono', message: 'm' }] }],
+    });
+
+    it('avisa con un console.warn agrupado y los incluye en issues, sin bloquear', () => {
+      const warn = spyOn(console, 'warn');
+      const change = service.setLocalContent([withBadSelector()]);
+
+      expect(change.mode).toBe('initial');
+      expect(ids()).toEqual(['s1']);
+      expect(change.issues.length).toBe(2);
+      expect(change.issues[0]).toContain('[0].formMappings[0].domSelector');
+      expect(change.issues[1]).toContain('validatorConfig[0].type');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.calls.mostRecent().args[0])).toContain('2 problemas');
+    });
+
+    it('no repite lo que normalize ya informa (id repetido, renderType)', () => {
+      const warn = spyOn(console, 'warn');
+      const change = service.setLocalContent([section('x', 'static'), section('x', 'static'), { id_DocumentHTMLCSS: 'y', htmlComponent: '<p></p>' }]);
+
+      expect(change.issues.length).toBe(2);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('un contenido válido no avisa de nada', () => {
+      const warn = spyOn(console, 'warn');
+      expect(service.setLocalContent([section('a', 'static')]).issues).toEqual([]);
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
 });

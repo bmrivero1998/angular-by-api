@@ -12,7 +12,8 @@ import {
   booleanAttribute,
   numberAttribute,
   QueryList,
-  ViewChildren
+  ViewChildren,
+  inject
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { CommonModule } from '@angular/common';
@@ -20,7 +21,8 @@ import { AbstractControl, FormGroup, PristineChangeEvent, ReactiveFormsModule, T
 import { Observable, Subscription, filter, finalize, take, debounceTime } from 'rxjs';
 
 // Imports de tu librería
-import { DynamicViewerComponent, ControlChangeEvent } from '@ux-driven-viewer/engine';
+import { DynamicViewerComponent, ControlChangeEvent, DYNAMIC_CONFIG, resolveTrustedUrl, UntrustedUrlError } from '@ux-driven-viewer/engine';
+import { loadStylesheets, toUrlList } from '../styles/stylesheet-loader';
 import { ApiDrivenContent, DynamicClickPayload } from '@ux-driven-viewer/engine';
 import { ContentChange, DynamicViewerService } from '../content/dynamic-viewer.service';
 import { isCloseAction, isResetAction, isSubmitAction, RETRY_LOAD_ACTION } from '../actions/action-names';
@@ -124,6 +126,20 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Input({ transform: toOrigins }) allowedOrigins: string[] = [];
 
   // --------------------------------------------------------
+  // Inputs de estilos
+  // --------------------------------------------------------
+  /**
+   * Hojas de estilo que carga el widget (separadas por espacio o coma): la de
+   * Bootstrap, un Tailwind ya compilado, la de tu marca... Las declara el host,
+   * así que no pasan por la regla de orígenes. Aplican a toda la página.
+   */
+  @Input({ transform: toUrlList }) stylesheets: string[] = [];
+  /** Clases (separadas por espacio) para un campo inválido. Por defecto `is-invalid`; con Tailwind, por ejemplo, `border-red-500`. */
+  @Input() errorClass?: string;
+  /** Clases (separadas por espacio) para un campo válido. Por defecto `is-valid`. */
+  @Input() successClass?: string;
+
+  // --------------------------------------------------------
   // Input de errores de carga
   // --------------------------------------------------------
   /**
@@ -187,6 +203,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   public trustedOrigins: string[] = [];
   /** Evita pedir el contenido dos veces: lo dispara tanto ngOnChanges como ngOnInit. */
   private initialContentRequested = false;
+  private readonly engineConfig = inject(DYNAMIC_CONFIG, { optional: true });
   public formGroup: FormGroup = new FormGroup({});
   /** Controla la visibilidad del botón "volver arriba" — vive en el propio widget (código confiable), no en el HTML dinámico del JSON, porque ese HTML pasa por DOMPurify y nunca ejecuta <script>. */
   public showBackToTopButton = false;
@@ -230,6 +247,32 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     this.trustedOrigins = Array.from(new Set(origins));
   }
 
+  /**
+   * `error-class` / `success-class` cambian las clases de validación del motor.
+   * Son de todo el bundle (el motor las comparte entre los widgets de la página).
+   */
+  private applyValidationClasses(): void {
+    if (!this.engineConfig) return;
+    if (this.errorClass?.trim()) this.engineConfig.errorClassName = this.errorClass.trim();
+    if (this.successClass?.trim()) this.engineConfig.successClassName = this.successClass.trim();
+  }
+
+  /** Carga las `cssLinks` de las secciones. Las de un origen no permitido se informan y no se cargan. */
+  private loadSectionStyles(sections: ApiDrivenContent[]): void {
+    const links: string[] = [];
+    for (const section of sections ?? []) {
+      for (const link of section.cssLinks ?? []) {
+        try {
+          links.push(resolveTrustedUrl(link, this.engineConfig, this.trustedOrigins, 'hoja de estilos'));
+        } catch (error) {
+          const reason = error instanceof UntrustedUrlError ? error.message : String(error);
+          this.errorOccurred.emit(`La sección "${section.id_DocumentHTMLCSS}" pide una hoja de estilos no permitida (${link}): ${reason}`);
+        }
+      }
+    }
+    if (links.length) void loadStylesheets(Array.from(new Set(links)));
+  }
+
   /** Identidad de cada sección para el `trackBy` de la plantilla. */
   public trackSection = (index: number, item: ApiDrivenContent): string => this.dws.trackSection(index, item);
 
@@ -253,12 +296,20 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       this.formGroup = this.externalForm;
     }
     this.updateTrustedOrigins();
+    this.applyValidationClasses();
+    if (this.stylesheets.length) void loadStylesheets(this.stylesheets);
+    // Las hojas que pide el JSON (`cssLinks`) se cargan solo si son de confianza.
+    this.subs.add(this.content$.subscribe((sections) => this.loadSectionStyles(sections)));
     this.initContentStrategy();
     this.subscribeToFormState();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['apiUrl'] || changes['allowedOrigins']) this.updateTrustedOrigins();
+    if (changes['errorClass'] || changes['successClass']) this.applyValidationClasses();
+    if (changes['stylesheets'] && !changes['stylesheets'].isFirstChange() && this.stylesheets.length) {
+      void loadStylesheets(this.stylesheets);
+    }
 
     const jsonChange = changes['localSchema'];
     const apiChange = changes['apiUrl'];

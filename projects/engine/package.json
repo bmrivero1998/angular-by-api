@@ -1,6 +1,6 @@
 {
   "name": "@ux-driven-viewer/engine",
-  "version": "1.0.3",
+  "version": "1.0.0",
   "description": "Motor de UI dinámica (Backend-Driven UI) para Angular: renderiza HTML/CSS descrito en JSON y lo sincroniza con Reactive Forms.",
   "license": "MIT",
   "peerDependencies": {

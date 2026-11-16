@@ -36,6 +36,40 @@
 
 En lugar de `localSchema` puedes indicar `api-url="https://tu-api.com/pantalla"` y el widget pedirá el JSON por su cuenta.
 
+## Estilos: Bootstrap, Tailwind u otro
+
+El widget **no trae ningún framework CSS** y no usa Shadow DOM: lo que cargue la página aplica dentro de él. Usa el que quieras.
+
+**Bootstrap**, cargado por el widget (sin `<link>` en tu página):
+
+```html
+<ux-driven-viewer api-url="/api/pantalla"
+  stylesheets="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"></ux-driven-viewer>
+```
+
+**Tailwind** (el Play CDN sirve para probar; en producción carga tu CSS compilado con `stylesheets`). Con otro framework cambia también las clases de validación:
+
+```html
+<script src="https://cdn.tailwindcss.com"></script>
+<ux-driven-viewer api-url="/api/pantalla"
+  error-class="border-red-500 ring-2 ring-red-500"
+  success-class="border-green-500"></ux-driven-viewer>
+<!-- El JSON solo trae clases: <input class="w-full rounded-lg border px-3 py-2"> -->
+```
+
+**Desde el backend**: una sección puede pedir sus propias hojas con `cssLinks`. Solo se cargan relativas o de un origen de confianza (`allowed-origins`); cualquier otra se rechaza.
+
+```json
+{ "id_DocumentHTMLCSS": "tarjeta", "renderType": "static",
+  "htmlComponent": "<div class=\"card\">…</div>",
+  "cssLinks": ["https://cdn.miempresa.com/marca.css"] }
+```
+```html
+<ux-driven-viewer api-url="/api/pantalla" allowed-origins="https://cdn.miempresa.com"></ux-driven-viewer>
+```
+
+Más detalle (Tailwind compilado, reglas de `cssLinks`, aislamiento): [Estilos](docs/styling.md). Ejemplo listo: [`examples/schemas/tailwind.json`](examples/schemas/tailwind.json).
+
 Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html) y esquemas listos para copiar en [`examples/schemas`](examples/schemas).
 
 ## Documentación
@@ -43,7 +77,8 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | Tema | Contenido |
 |---|---|
 | [Primeros pasos](docs/getting-started.md) | Instalación en un host, atributos del elemento, requisitos. |
-| [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación. |
+| [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación, JSON Schema y `validateSchema`. |
+| [JSON Schema](schema/ux-driven-viewer.schema.json) | Contrato oficial del JSON (draft-07), para editores y backends. |
 | [Actualizar el contenido](docs/updating-content.md) | `static` vs `dynamic`, `updateSections`, `refresh`, `contentUpdated`. |
 | [Formularios de varios pasos](docs/steppers.md) | `data-dynamic-stepper`, validación por paso, indicador, `stepChanged`. |
 | [Subida de archivos](docs/file-upload.md) | `fileUploadConfig`, subida con avance, resultado en el formulario, orígenes permitidos. |
@@ -51,7 +86,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | [Validadores y controles](docs/validators.md) | `formMappings`, validadores, `keyFilter`, máscaras, archivos. |
 | [Lógica condicional](docs/conditional-logic.md) | `showIf` / `hideIf`. |
 | [Eventos](docs/events.md) | Qué emite el widget y con qué datos. |
-| [Estilos](docs/styling.md) | Alcance del CSS, Bootstrap, clases de validación. |
+| [Estilos](docs/styling.md) | Alcance del CSS, Bootstrap, Tailwind u otros frameworks (`stylesheets`, `cssLinks`), clases de validación. |
 | [Seguridad](docs/security.md) | Qué se sanitiza y qué no. |
 
 ## Estructura del repositorio
@@ -60,7 +95,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 projects/
 ├── engine/       Librería Angular: el motor (render, formularios, validación).
 ├── runtime/      El custom element <ux-driven-viewer>: motor + carga de contenido,
-│                 modal, loader y toasts. Produce ux-driven-viewer.js.
+│                 modal. Produce ux-driven-viewer.js.
 └── playground/   Página host para desarrollar y probar.
 examples/         Esquemas JSON y hosts de ejemplo.
 docs/             Documentación de uso.
@@ -92,7 +127,11 @@ Más detalle en la [guía de contribución](CONTRIBUTING.md).
 
 En estabilización. La estructura y el formato del JSON están definidos y los problemas detectados en la revisión inicial (formularios, lógica condicional, CSS, carga de contenido, acciones, subida de archivos) están corregidos. Funcionalidades incluidas: formularios con validación y máscaras, lógica condicional, formularios de varios pasos, subida de archivos, autocompletado, páginas de error y actualización parcial de contenido.
 
-Queda código sin uso: el loader, los toasts y su `LoaderInterceptor`, la navegación y el registro de componentes (en `projects/engine/src/lib/experimental`), y `HtmlSanitizerInterceptor`, que no se registra por defecto.
+Ya no queda código sin uso: todo lo que hay en el repositorio se ejecuta o se puede describir en el JSON. Limitaciones reales que siguen vigentes:
+
+- El bundle del custom element incluye Angular completo (no es una librería ligera para páginas sin Angular).
+- Ningún framework CSS viene incluido: Bootstrap, Tailwind u otro lo aporta la página (`<link>`) o se pide con `stylesheets` / `cssLinks`. Con otro framework, cambia las clases de validación con `error-class` / `success-class`.
+- Los mensajes de validación y de error están en español.
 
 ## Contribuir
 

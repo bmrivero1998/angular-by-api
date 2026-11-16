@@ -3,7 +3,33 @@
 Los cambios relevantes de este proyecto se documentan aquí.
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa [versionado semántico](https://semver.org/lang/es/).
 
-## [Sin publicar]
+## [1.0.0] - 2026-11-16
+
+Primera versión estable: contrato del JSON con JSON Schema y validación, `static` / `dynamic` por sección, formularios con validadores, lógica condicional, estilos aislados y aceptación de cualquier framework CSS, subida de archivos, formularios de varios pasos, autocompletado dinámico, páginas de error y pruebas E2E.
+
+### Añadido (contrato del JSON)
+
+- **JSON Schema oficial** (draft-07) en `schema/ux-driven-viewer.schema.json`, derivado de los modelos del engine; los ejemplos de `examples/schemas` lo cumplen.
+- **`validateSchema(json): SchemaIssue[]`** (y `formatSchemaIssue`) en el engine, sin dependencias nuevas: devuelve cada problema con su ruta (`[2].formMappings[0].validatorConfig[1].type`) y mensaje en español. Detecta además ids de sección repetidos, `domSelector` / `errorDisplaySelector` que no existen en el `htmlComponent` de su sección, `matchControl` hacia un control inexistente y `controlName` repetidos. Ver `docs/schema.md`.
+- El widget lo usa solo como aviso: un `console.warn` agrupado y los problemas en `issues` de `contentUpdated`; nunca bloquea el render.
+
+### Eliminado (código sin uso)
+
+- Loader (`LoaderService`, `LoaderComponent`) y `LoaderInterceptor`, y los toasts (`ToastService`, `ToastContainerComponent`) del runtime: nada los usaba ni se podían describir en el JSON.
+- `projects/engine/src/lib/experimental` (navegación dinámica y registro de componentes), que no se exportaba.
+- `HtmlSanitizerInterceptor`, que no se registraba; el HTML ya se sanea con DOMPurify en el widget. Se quitan también las opciones `sanitizationLevel`, `allowedHtmlTags` y `disallowExternalCssResources` de `DYNAMIC_CONFIG`, que solo leía ese interceptor.
+
+### Añadido (estilos con cualquier framework CSS)
+
+- **Atributo `stylesheets`** (o propiedad): el widget carga las hojas que le indiques (Bootstrap, un Tailwind compilado, la de tu marca) una sola vez, sin duplicar las que la página ya tenga. Una hoja caída o lenta (8 s) no bloquea la pantalla.
+- **`cssLinks` en una sección del JSON**: el backend puede pedir hojas externas. Solo se cargan relativas o de un origen de confianza (misma regla que la subida y el autocompletado); si no, se informa por `errorOccurred`.
+- **`error-class` / `success-class`**: clases de validación configurables desde el widget (con Tailwind, `border-red-500`...). Antes solo se podían cambiar desde la librería Angular.
+- Ejemplo `tailwind.json`, y docs en `docs/styling.md` (Tailwind compilado o Play CDN).
+- Verificado en navegador: el Play CDN de Tailwind genera las clases dentro del widget y `stylesheets` carga Bootstrap sin que la página lo incluya.
+
+### Eliminado (Bootstrap del repo)
+
+- Bootstrap ya no es dependencia del repo (ni del playground ni de los tests): el playground lo pide con `stylesheets`.
 
 ### Añadido (formularios de varios pasos)
 
@@ -165,6 +191,6 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - `DynamicInteractionService` y `Builder.interface.ts`, que no se usaban.
 - Dependencias sin uso: `@angular/router`, `crypto-js`, `concat`, `fs-extra`.
 
-## [1.0.3]
+## [1.0.3] (interna, anterior a 1.0.0)
 
-Versión previa a la reorganización del repositorio.
+Versión previa a la reorganización del repositorio. Nunca se publicó; la numeración se reinicia en 1.0.0.

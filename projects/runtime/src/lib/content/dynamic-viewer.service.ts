@@ -4,6 +4,8 @@ import {
   ApiDrivenContent,
   DisplayableInAppComponent,
   TableBindingColumn,
+  formatSchemaIssue,
+  validateSchema,
 } from '@ux-driven-viewer/engine';
 import { DynamicContentService } from './dynamic-content.service';
 import { DomSanitizer } from '@angular/platform-browser';
@@ -149,6 +151,7 @@ export class DynamicViewerService {
     if (!parsed.ok) return { mode: 'unchanged', changedIds: [], issues: parsed.issues };
 
     const { sections: incoming, issues } = this.normalize(parsed.sections);
+    issues.push(...this.checkSchema(parsed.sections));
     const incomingById = new Map(incoming.map((section) => [section.id_DocumentHTMLCSS, section]));
 
     const current = this.liveSections();
@@ -225,6 +228,7 @@ export class DynamicViewerService {
     if (!parsed.ok) return { mode: 'unchanged', changedIds: [], issues: parsed.issues };
 
     const { sections, issues } = this.normalize(parsed.sections);
+    issues.push(...this.checkSchema(parsed.sections));
     const change = this.reconcile(sections);
     change.issues.unshift(...issues);
     return change;
@@ -331,6 +335,27 @@ export class DynamicViewerService {
     } catch (error) {
       return { ok: false, issues: [`El contenido recibido no es un JSON válido: ${(error as Error).message}`] };
     }
+  }
+
+  /**
+   * Compara el contenido recibido con el contrato (`validateSchema`) y lo
+   * informa como aviso: un `console.warn` agrupado y entradas en `issues`.
+   * Nunca bloquea ni cambia lo que se pinta. Lo que `normalize` ya informa
+   * (id ausente o repetido, renderType, sección que no es objeto) se omite
+   * para no avisar dos veces.
+   */
+  private checkSchema(rawSections: unknown[]): string[] {
+    const found = validateSchema(rawSections).filter(
+      (issue) => !/^\[\d+\](\.(id_DocumentHTMLCSS|renderType))?$/.test(issue.path),
+    );
+    if (found.length === 0) return [];
+
+    const lines = found.map((issue) => `${issue.severity === 'error' ? 'Error' : 'Aviso'} ${formatSchemaIssue(issue)}`);
+    console.warn(
+      `[UXWidget] El JSON recibido no cumple el contrato (${found.length} problema${found.length === 1 ? '' : 's'}):\n` +
+        lines.map((line) => ` - ${line}`).join('\n'),
+    );
+    return found.map((issue) => `Esquema ${formatSchemaIssue(issue)}`);
   }
 
   /**

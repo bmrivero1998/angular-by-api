@@ -3,13 +3,10 @@ import { InjectionToken } from '@angular/core';
 // Interfaz para definir qué puede configurar el usuario
 export interface DynamicLibraryConfig {
   apiUrl?: string;
-  sanitizationLevel?: 'strict' | 'flexible' | 'none';
-  allowedHtmlTags?: string[];
   // --- MEJORA PARA CSS FRAMEWORKS ---
   errorClassName?: string;   // Ej: 'is-invalid' (Bootstrap) o 'border-red-500' (Tailwind)
   successClassName?: string; // Ej: 'is-valid' (Bootstrap) o 'border-green-500' (Tailwind)
   defaultErrorMessages?:DefaultErrorMessages
-  disallowExternalCssResources?: boolean;
 
   visibilityAnimation?: boolean;    // Habilitar animaciones
   visibilityAnimationDuration?: number; // Duración en ms
