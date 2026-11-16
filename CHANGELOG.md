@@ -5,6 +5,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Añadido (contrato del JSON)
+
+- **JSON Schema oficial** (draft-07) en `schema/ux-driven-viewer.schema.json`, derivado de los modelos del engine; los ejemplos de `examples/schemas` lo cumplen.
+- **`validateSchema(json): SchemaIssue[]`** (y `formatSchemaIssue`) en el engine, sin dependencias nuevas: devuelve cada problema con su ruta (`[2].formMappings[0].validatorConfig[1].type`) y mensaje en español. Detecta además ids de sección repetidos, `domSelector` / `errorDisplaySelector` que no existen en el `htmlComponent` de su sección, `matchControl` hacia un control inexistente y `controlName` repetidos. Ver `docs/schema.md`.
+- El widget lo usa solo como aviso: un `console.warn` agrupado y los problemas en `issues` de `contentUpdated`; nunca bloquea el render.
+
+### Eliminado (código sin uso)
+
+- Loader (`LoaderService`, `LoaderComponent`) y `LoaderInterceptor`, y los toasts (`ToastService`, `ToastContainerComponent`) del runtime: nada los usaba ni se podían describir en el JSON.
+- `projects/engine/src/lib/experimental` (navegación dinámica y registro de componentes), que no se exportaba.
+- `HtmlSanitizerInterceptor`, que no se registraba; el HTML ya se sanea con DOMPurify en el widget. Se quitan también las opciones `sanitizationLevel`, `allowedHtmlTags` y `disallowExternalCssResources` de `DYNAMIC_CONFIG`, que solo leía ese interceptor.
+
 ### Añadido (formularios de varios pasos)
 
 - **Stepper dirigido por el HTML** de la sección, sin configuración aparte: `data-dynamic-stepper` en un contenedor, `data-dynamic-step="id"` en cada paso y botones con `data-dynamic-action="next_step"` / `"previous_step"`. Ver `docs/steppers.md`.

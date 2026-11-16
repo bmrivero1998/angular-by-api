@@ -1,7 +1,6 @@
 /*
  * API pública de @ux-driven-viewer/engine.
- * Lo que no se exporta aquí es detalle interno y puede cambiar sin aviso
- * (incluido todo lo que vive en lib/experimental).
+ * Lo que no se exporta aquí es detalle interno y puede cambiar sin aviso.
  */
 
 // Componente principal
@@ -37,5 +36,5 @@ export { scopeCss, scopeClassFor } from './lib/dom/css-scoper';
 export * from './lib/dom/timer-manager.service';
 export * from './lib/dom/external-libs-cleanup.service';
 
-// Seguridad
-export * from './lib/security/html-sanitizer.interceptor';
+// Contrato del JSON (validación)
+export * from './lib/schema/validate-schema';

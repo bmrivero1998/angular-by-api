@@ -1,0 +1,274 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/ux-driven-viewer/schema/ux-driven-viewer.schema.json",
+  "title": "UX Driven Viewer: pantalla",
+  "description": "Contrato del JSON que consume el widget: un arreglo de secciones. Lo que un JSON Schema no puede comprobar (ids repetidos, selectores que no encuentran su elemento en el HTML, matchControl hacia un control inexistente) lo comprueba validateSchema() del engine.",
+  "type": "array",
+  "items": { "$ref": "#/definitions/section" },
+  "definitions": {
+    "section": {
+      "type": "object",
+      "description": "Una sección de la pantalla. id_DocumentHTMLCSS debe ser único en el arreglo.",
+      "required": ["id_DocumentHTMLCSS", "renderType", "htmlComponent"],
+      "additionalProperties": false,
+      "properties": {
+        "id_DocumentHTMLCSS": { "type": "string", "minLength": 1, "description": "Identifica la sección; único en el arreglo." },
+        "renderType": {
+          "type": "string",
+          "enum": ["static", "dynamic"],
+          "description": "static: cualquier cambio recarga la pantalla entera. dynamic: la sección se actualiza sola."
+        },
+        "htmlComponent": { "type": "string", "description": "HTML de la sección (se sanitiza antes de pintarse)." },
+        "cssComponent": { "type": "string", "description": "CSS de la sección; queda aislado a ella." },
+        "configuracion": { "type": "string" },
+        "dynamicContentId": { "type": "string" },
+        "formId": { "type": "string", "description": "Identificador del formulario de la sección." },
+        "formMappings": { "type": "array", "items": { "$ref": "#/definitions/formFieldMapping" } },
+        "formInitialData": { "type": "object", "description": "Valores iniciales por controlName." },
+        "validators": { "type": "array" },
+        "buttonConfigs": { "type": "array", "items": { "$ref": "#/definitions/buttonConfig" } },
+        "dataBindings": { "type": "array", "items": { "$ref": "#/definitions/dataBinding" } },
+        "tableBindings": { "type": "array", "items": { "$ref": "#/definitions/tableBinding" } },
+        "otros": { "type": "object", "description": "Metadatos libres (source, warnings, fixes, accessibilityScore...)." }
+      }
+    },
+    "cssSelector": { "type": "string", "minLength": 1, "description": "Selector CSS evaluado dentro del htmlComponent de la sección." },
+    "formFieldMapping": {
+      "type": "object",
+      "required": ["controlName", "domSelector"],
+      "additionalProperties": false,
+      "properties": {
+        "controlName": { "type": "string", "minLength": 1 },
+        "domSelector": { "$ref": "#/definitions/cssSelector" },
+        "eventType": { "type": "string", "description": "Evento del DOM a escuchar. Por defecto input." },
+        "errorDisplaySelector": { "type": ["string", "null"], "description": "Elemento donde mostrar el error del campo." },
+        "defaultValue": {},
+        "validatorConfig": { "type": "array", "items": { "$ref": "#/definitions/validatorConfig" } },
+        "keyFilter": { "type": "string", "description": "int, number, alpha, alphanum, hex, decimal o una regex." },
+        "inputMask": { "type": "string", "description": "Máscara: 9 dígito, x letra, * alfanumérico; el resto es literal." },
+        "hideIf": { "type": "string" },
+        "showIf": { "type": "string" },
+        "visibilityGroup": { "type": "string" },
+        "alwaysDisabled": { "type": "boolean" },
+        "valueProperty": { "type": "string", "description": "Propiedad del elemento a sincronizar. Por defecto value." },
+        "useEventDetail": { "type": "boolean" },
+        "asyncValidator": { "$ref": "#/definitions/asyncValidatorConfig" },
+        "toggleConfig": { "$ref": "#/definitions/toggleConfig" },
+        "rangeConfig": { "$ref": "#/definitions/rangeConfig" },
+        "colorConfig": { "$ref": "#/definitions/colorConfig" },
+        "dateTimeConfig": { "$ref": "#/definitions/dateTimeConfig" },
+        "multiSelectConfig": { "$ref": "#/definitions/multiSelectConfig" },
+        "captchaConfig": { "$ref": "#/definitions/captchaConfig" },
+        "passwordConfig": { "$ref": "#/definitions/passwordConfig" },
+        "sliderInputConfig": { "$ref": "#/definitions/sliderInputConfig" },
+        "richTextConfig": { "$ref": "#/definitions/richTextConfig" },
+        "autoCompleteConfig": { "$ref": "#/definitions/autoCompleteConfig" },
+        "fileUploadConfig": { "$ref": "#/definitions/fileUploadConfig" },
+        "sliderConfig": { "$ref": "#/definitions/sliderConfig" }
+      }
+    },
+    "validatorConfig": {
+      "type": "object",
+      "required": ["type", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "No distingue mayúsculas.",
+          "pattern": "^([rR][eE][qQ][uU][iI][rR][eE][dD]|[rR][eE][qQ][uU][iI][rR][eE][dD][tT][rR][uU][eE]|[eE][mM][aA][iI][lL]|[mM][iI][nN][lL][eE][nN][gG][tT][hH]|[mM][aA][xX][lL][eE][nN][gG][tT][hH]|[pP][aA][tT][tT][eE][rR][nN]|[mM][iI][nN]|[mM][aA][xX]|[mM][aA][tT][cC][hH][vV][aA][lL][uU][eE]|[mM][aA][tT][cC][hH][cC][oO][nN][tT][rR][oO][lL])$"
+        },
+        "value": { "description": "Obligatorio en minLength, maxLength, pattern, min, max, matchValue y matchControl." },
+        "message": { "type": "string" }
+      }
+    },
+    "asyncValidatorConfig": {
+      "type": "object",
+      "required": ["endpoint", "method", "errorKey", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": { "type": "string" },
+        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
+        "debounceTime": { "type": "number", "minimum": 0 },
+        "errorKey": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "toggleConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checkedClass": { "type": "string" },
+        "uncheckedClass": { "type": "string" },
+        "trueValue": {},
+        "falseValue": {}
+      }
+    },
+    "rangeConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "displaySelector": { "$ref": "#/definitions/cssSelector" },
+        "displayFormat": { "type": "string" },
+        "step": { "type": "number" }
+      }
+    },
+    "colorConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "previewSelector": { "$ref": "#/definitions/cssSelector" },
+        "defaultColor": { "type": "string" }
+      }
+    },
+    "dateTimeConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": { "type": "string" },
+        "pickerType": { "type": "string", "enum": ["native", "flatpickr", "bootstrap"] },
+        "showTime": { "type": "boolean" },
+        "minDate": { "type": "string" },
+        "maxDate": { "type": "string" }
+      }
+    },
+    "multiSelectConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "separator": { "type": "string" },
+        "maxSelections": { "type": "integer", "minimum": 1 },
+        "displaySelector": { "$ref": "#/definitions/cssSelector" }
+      }
+    },
+    "richTextConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "editorType": { "type": "string", "enum": ["quill", "tinymce", "ckeditor"] },
+        "toolbar": {},
+        "height": { "type": "number", "minimum": 0 }
+      }
+    },
+    "captchaConfig": {
+      "type": "object",
+      "required": ["siteKey"],
+      "additionalProperties": false,
+      "properties": {
+        "siteKey": { "type": "string" },
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "size": { "type": "string", "enum": ["normal", "compact"] }
+      }
+    },
+    "passwordConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strengthMeter": { "type": "boolean" },
+        "toggleVisibility": { "type": "boolean" }
+      }
+    },
+    "sliderInputConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "showValue": { "type": "boolean" }
+      }
+    },
+    "sliderConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "orientation": { "type": "string", "enum": ["horizontal", "vertical"] }
+      }
+    },
+    "autoCompleteConfig": {
+      "type": "object",
+      "description": "Desde el JSON solo cabe una lista fija (source) o un endpoint (sourceUrl); la función solo existe en la librería Angular.",
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "array", "items": { "type": "string" } },
+        "sourceUrl": { "type": "string", "minLength": 1 },
+        "queryParam": { "type": "string", "minLength": 1 },
+        "minChars": { "type": "integer", "minimum": 0 },
+        "debounceTime": { "type": "number", "minimum": 0 }
+      }
+    },
+    "fileUploadConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accept": { "type": "string" },
+        "maxSize": { "type": "number", "minimum": 0, "description": "Bytes por archivo." },
+        "multiple": { "type": "boolean" },
+        "maxCount": { "type": "integer", "minimum": 1 },
+        "uploadUrl": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "enum": ["POST", "PUT"] },
+        "fieldName": { "type": "string", "minLength": 1 },
+        "progressSelector": { "$ref": "#/definitions/cssSelector" },
+        "fileListSelector": { "$ref": "#/definitions/cssSelector" }
+      }
+    },
+    "buttonConfig": {
+      "type": "object",
+      "required": ["selector"],
+      "additionalProperties": false,
+      "properties": {
+        "selector": { "$ref": "#/definitions/cssSelector" },
+        "disableWhen": {
+          "type": "string",
+          "description": "Condición plana (formIsInvalid, formIsPristine...) o tipo:control1,control2 (controlIsInvalid:email)."
+        }
+      }
+    },
+    "dataBinding": {
+      "type": "object",
+      "required": ["selector"],
+      "additionalProperties": false,
+      "properties": {
+        "selector": { "$ref": "#/definitions/cssSelector" },
+        "value": { "type": ["string", "number", "boolean", "null"] }
+      }
+    },
+    "tableBinding": {
+      "type": "object",
+      "required": ["tableSelector", "columns", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "tableSelector": { "$ref": "#/definitions/cssSelector" },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "header"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string" },
+              "header": { "type": "string" },
+              "isHtml": { "type": "boolean" }
+            }
+          }
+        },
+        "data": { "type": "array" },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "action"],
+            "additionalProperties": false,
+            "properties": {
+              "label": { "type": "string" },
+              "action": { "type": "string" },
+              "cssClass": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

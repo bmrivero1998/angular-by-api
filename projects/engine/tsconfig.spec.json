@@ -4,6 +4,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "../../out-tsc/engine-spec",
+    "resolveJsonModule": true,
     "types": [
       "jasmine"
     ]

@@ -43,7 +43,8 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | Tema | Contenido |
 |---|---|
 | [Primeros pasos](docs/getting-started.md) | Instalación en un host, atributos del elemento, requisitos. |
-| [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación. |
+| [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación, JSON Schema y `validateSchema`. |
+| [JSON Schema](schema/ux-driven-viewer.schema.json) | Contrato oficial del JSON (draft-07), para editores y backends. |
 | [Actualizar el contenido](docs/updating-content.md) | `static` vs `dynamic`, `updateSections`, `refresh`, `contentUpdated`. |
 | [Formularios de varios pasos](docs/steppers.md) | `data-dynamic-stepper`, validación por paso, indicador, `stepChanged`. |
 | [Subida de archivos](docs/file-upload.md) | `fileUploadConfig`, subida con avance, resultado en el formulario, orígenes permitidos. |
@@ -60,7 +61,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 projects/
 ├── engine/       Librería Angular: el motor (render, formularios, validación).
 ├── runtime/      El custom element <ux-driven-viewer>: motor + carga de contenido,
-│                 modal, loader y toasts. Produce ux-driven-viewer.js.
+│                 modal. Produce ux-driven-viewer.js.
 └── playground/   Página host para desarrollar y probar.
 examples/         Esquemas JSON y hosts de ejemplo.
 docs/             Documentación de uso.
@@ -92,7 +93,11 @@ Más detalle en la [guía de contribución](CONTRIBUTING.md).
 
 En estabilización. La estructura y el formato del JSON están definidos y los problemas detectados en la revisión inicial (formularios, lógica condicional, CSS, carga de contenido, acciones, subida de archivos) están corregidos. Funcionalidades incluidas: formularios con validación y máscaras, lógica condicional, formularios de varios pasos, subida de archivos, autocompletado, páginas de error y actualización parcial de contenido.
 
-Queda código sin uso: el loader, los toasts y su `LoaderInterceptor`, la navegación y el registro de componentes (en `projects/engine/src/lib/experimental`), y `HtmlSanitizerInterceptor`, que no se registra por defecto.
+Ya no queda código sin uso: todo lo que hay en el repositorio se ejecuta o se puede describir en el JSON. Limitaciones reales que siguen vigentes:
+
+- El bundle del custom element incluye Angular completo (no es una librería ligera para páginas sin Angular).
+- Bootstrap no viene incluido: lo aporta la página host (el runtime solo aplica `is-invalid` / `is-valid`).
+- Los mensajes de validación y de error están en español.
 
 ## Contribuir
 

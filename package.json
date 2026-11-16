@@ -12,7 +12,8 @@
     "test:engine": "ng test engine",
     "test:runtime": "ng test runtime",
     "test:ci": "ng test engine --watch=false --browsers=ChromeHeadlessCI && ng test runtime --watch=false --browsers=ChromeHeadlessCI",
-    "mock-api": "node scripts/mock-api.js"
+    "mock-api": "node scripts/mock-api.js",
+    "test:e2e": "node --test e2e/viewer.e2e.test.js"
   },
   "private": true,
   "dependencies": {
@@ -43,6 +44,7 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
     "ng-packagr": "^19.2.0",
+    "playwright": "^1.63.0",
     "typescript": "~5.7.2"
   },
   "license": "MIT"
