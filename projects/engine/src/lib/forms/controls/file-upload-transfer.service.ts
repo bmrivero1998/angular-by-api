@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Observable, combineLatest, distinctUntilChanged, map, startWith, catchError, throwError } from 'rxjs';
 import { DYNAMIC_CONFIG } from '../../config/dynamic-config.token';
 import { FileUploadConfig } from '../../models/form-field-mapping.model';
+import { resolveTrustedUrl } from './trusted-url';
 
 /** Estado de una subida en curso. */
 export interface UploadState {
@@ -35,25 +36,14 @@ export class FileUploadTransferService {
 
   /**
    * Convierte la `uploadUrl` del JSON en la URL real, o lanza `FileUploadError`
-   * si el origen no está permitido. La URL llega en el JSON, así que no se
-   * confía en ella para mandar los archivos del usuario a cualquier lugar.
+   * si el origen no está permitido (ver `resolveTrustedUrl`).
    */
   public resolveUrl(url: string, extraOrigins: string[] = []): string {
-    const trimmed = (url ?? '').trim();
-    if (!trimmed) throw new FileUploadError('El campo no tiene una URL de subida configurada.');
-
-    // Con esquema (https:, javascript:, data:...) o protocolo-relativa (//host).
-    if (/^[a-z][a-z0-9+.\-]*:/i.test(trimmed) || trimmed.startsWith('//')) {
-      const origin = this.originOf(trimmed);
-      if (!origin || !/^https?:/i.test(origin) || !this.allowedOrigins(extraOrigins).has(origin)) {
-        throw new FileUploadError('La URL de subida apunta a un origen no permitido.');
-      }
-      return trimmed;
+    try {
+      return resolveTrustedUrl(url, this.config, extraOrigins, 'subida');
+    } catch (error) {
+      throw new FileUploadError(error instanceof Error ? error.message : 'La URL de subida no es válida.');
     }
-
-    // Relativa: se cuelga de apiUrl; sin apiUrl se deja como está (relativa a la página).
-    const base = (this.config?.apiUrl ?? '').replace(/\/+$/, '');
-    return base ? `${base}/${trimmed.replace(/^\/+/, '')}` : trimmed;
   }
 
   /**
@@ -130,30 +120,6 @@ export class FileUploadTransferService {
       return JSON.parse(body);
     } catch {
       return body;
-    }
-  }
-
-  private allowedOrigins(extra: string[]): Set<string> {
-    const origins = new Set<string>();
-    const add = (value: string | undefined) => {
-      const origin = value ? this.originOf(value) : null;
-      if (origin) origins.add(origin);
-    };
-
-    if (typeof location !== 'undefined') add(location.origin);
-    add(this.config?.apiUrl);
-    this.config?.allowedUploadOrigins?.forEach(add);
-    extra.forEach(add);
-    return origins;
-  }
-
-  private originOf(value: string): string | null {
-    try {
-      const base = typeof location !== 'undefined' ? location.href : undefined;
-      const origin = new URL(value, base).origin;
-      return origin === 'null' ? null : origin;
-    } catch {
-      return null;
     }
   }
 }

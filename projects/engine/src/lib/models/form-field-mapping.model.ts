@@ -125,11 +125,32 @@ export interface FilePayload {
   };
   
   // Para autocomplete/combobox
-   export interface AutoCompleteConfig {
-    source?: string[] | ((query: string) => Promise<string[]>); // Fuente de datos
-    minChars?: number;        // Mínimo de caracteres para buscar
-    debounceTime?: number;    // Debounce para búsquedas
-  };
+export interface AutoCompleteConfig {
+  /**
+   * Sugerencias: una lista fija o, solo desde la librería Angular (una función
+   * no cabe en un JSON), una función que las devuelve para lo escrito.
+   */
+  source?: string[] | ((query: string) => Promise<Array<string | AutoCompleteSuggestion>>);
+  /**
+   * Endpoint que devuelve las sugerencias (`GET <sourceUrl>?q=<lo escrito>`),
+   * para usarlo desde el JSON. Responde con un arreglo de textos o de objetos
+   * `{ value, label? }`. Una URL relativa se resuelve contra `apiUrl`; una
+   * absoluta solo si su origen es de confianza (ver `resolveTrustedUrl`).
+   */
+  sourceUrl?: string;
+  /** Nombre del parámetro con lo escrito. Por defecto `q`. */
+  queryParam?: string;
+  /** Mínimo de caracteres para buscar. Por defecto 2. */
+  minChars?: number;
+  /** Espera, en ms, tras la última tecla antes de buscar. Por defecto 300. */
+  debounceTime?: number;
+}
+
+/** Una sugerencia con texto de ayuda: `value` es lo que se escribe en el campo, `label` lo que se muestra junto a él. */
+export interface AutoCompleteSuggestion {
+  value: string;
+  label?: string;
+}
   
   // Para upload de archivos
 export interface FileUploadConfig {
@@ -147,7 +168,7 @@ export interface FileUploadConfig {
    * (multipart/form-data, una petición por archivo). Una URL relativa se
    * resuelve contra `DYNAMIC_CONFIG.apiUrl`. Una absoluta solo se acepta si su
    * origen es el de la página, el de `apiUrl`/`api-url` o está permitido
-   * explícitamente (ver `allowedUploadOrigins`). Sin `uploadUrl`, el motor solo
+   * explícitamente (ver `allowedOrigins`). Sin `uploadUrl`, el motor solo
    * valida y avisa con `fileSelected`, y la subida la hace el host.
    */
   uploadUrl?: string;

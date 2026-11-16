@@ -44,7 +44,7 @@
 | `back-to-top-threshold` | number | `400` | Píxeles de scroll antes de que aparezca el botón "volver arriba". |
 | `debug` | boolean | `false` | Si es `true`, loguea en consola cada evento interno (`controlChanged`, `formStateChanged`, `actionTriggered` crudo). Útil para debuggear en un host sin devtools cómodos. |
 | `form-state-debounce` | number | `150` | Debounce en ms del evento `formStateChanged`. `0` = emite en cada tecla. |
-| `upload-origins` | texto | — | Orígenes, separados por coma, a los que se permite subir archivos además del de la página y del de `api-url`. Ver [Subida de archivos](file-upload.md). |
+| `allowed-origins` | texto | — | Orígenes, separados por coma, a los que el contenido puede enviar datos del usuario (subida de archivos, sugerencias de autocompletado) además del de la página y del de `api-url`. Ver [Seguridad](security.md#a-dónde-se-pueden-enviar-datos). |
 | `show-error-page` | boolean | `true` | Si falla la primera carga por `api-url`, pinta una página de error. Con `"false"` solo se emite `errorOccurred`. Ver [Errores de carga](errors.md). |
 
 ## Métodos del elemento

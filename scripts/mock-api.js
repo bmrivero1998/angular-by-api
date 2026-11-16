@@ -1,6 +1,7 @@
 /**
- * API de prueba para el playground: recibe subidas de archivos en
- * `POST|PUT /api/archivos`, sin dependencias.
+ * API de prueba para el playground, sin dependencias:
+ *   - `POST|PUT /api/archivos`   recibe subidas de archivos
+ *   - `GET /api/ciudades?q=...`  sugerencias para el autocompletado
  *
  *   npm run mock-api          # escucha en http://localhost:3001
  *   npm start                 # el playground redirige /api a ese puerto (ver proxy.conf.json)
@@ -58,18 +59,34 @@ async function handleUpload(req, res) {
   send(res, 200, { id, name, size: body.length, url: `/archivos/${id}` });
 }
 
+const CITIES = [
+  'Buenos Aires', 'Bahía Blanca', 'Córdoba', 'Corrientes', 'Rosario', 'Mendoza', 'Mar del Plata',
+  'Salta', 'San Juan', 'San Luis', 'San Miguel de Tucumán', 'Santa Fe', 'Santiago del Estero', 'Neuquén',
+];
+
+/** GET /api/ciudades?q=cor -> ["Córdoba", "Corrientes"] (tarda un poco, como un servicio real). */
+function handleCities(req, res) {
+  // Sin acentos ni mayúsculas: "cor" encuentra "Córdoba".
+  const plain = (text) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const q = plain(new URL(req.url, 'http://localhost').searchParams.get('q') || '');
+  const matches = CITIES.filter((city) => plain(city).includes(q));
+  setTimeout(() => send(res, 200, matches), 150);
+}
+
 function createServer() {
   return http.createServer((req, res) => {
     const path = (req.url || '').split('?')[0];
     if (path === '/api/archivos' && (req.method === 'POST' || req.method === 'PUT')) {
       handleUpload(req, res).catch(() => send(res, 500, { error: 'Error leyendo la subida' }));
+    } else if (path === '/api/ciudades' && req.method === 'GET') {
+      handleCities(req, res);
     } else {
       send(res, 404, { error: 'No encontrado' });
     }
   });
 }
 
-module.exports = { handleUpload, createServer };
+module.exports = { handleUpload, handleCities, createServer };
 
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3001;

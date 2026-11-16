@@ -75,17 +75,17 @@ La `uploadUrl` viene en el JSON, así que **no se confía en ella** para mandar 
 - Una URL **relativa** se resuelve contra `DYNAMIC_CONFIG.apiUrl` (en la librería Angular) o contra la página.
 - Una URL **absoluta** solo se acepta si su origen es: el de la página, el de `api-url` del widget, el de `DYNAMIC_CONFIG.apiUrl`, o uno que declares explícitamente. Cualquier otro (`https://otro.com/...`, `//otro.com/...`, `javascript:`, `data:`) falla sin hacer ninguna petición, con el mensaje "La URL de subida apunta a un origen no permitido".
 
-Para permitir otros orígenes:
+Para permitir otros orígenes (la misma regla vale para el autocompletado):
 
 ```html
 <!-- widget -->
 <ux-driven-viewer api-url="https://api.mi-sitio.com/pantalla"
-                  upload-origins="https://files.mi-sitio.com, https://cdn.mi-sitio.com"></ux-driven-viewer>
+                  allowed-origins="https://files.mi-sitio.com, https://cdn.mi-sitio.com"></ux-driven-viewer>
 ```
 
 ```ts
 // librería Angular
-{ provide: DYNAMIC_CONFIG, useValue: { apiUrl: 'https://api.mi-sitio.com', allowedUploadOrigins: ['https://files.mi-sitio.com'] } }
+{ provide: DYNAMIC_CONFIG, useValue: { apiUrl: 'https://api.mi-sitio.com', allowedOrigins: ['https://files.mi-sitio.com'] } }
 ```
 
 ## Eventos

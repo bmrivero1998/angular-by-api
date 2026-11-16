@@ -3,6 +3,7 @@ import { HttpEventType, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { DynamicViewerComponent } from './dynamic-viewer.component';
 import { FormFieldMapping, ButtonConfig } from '../models/form-field-mapping.model';
+import { StepChange } from '../forms/stepper/form-stepper';
 
 /**
  * Pruebas de integración: el componente con TODOS sus servicios reales y un
@@ -825,12 +826,12 @@ describe('DynamicViewerComponent (integración de formularios)', () => {
       expect(el("[data-error-for='doc']").textContent).toContain('origen no permitido');
     });
 
-    it('un origen declarado en uploadOrigins permite la URL absoluta', () => {
+    it('un origen declarado en allowedOrigins permite la URL absoluta', () => {
       fixture = TestBed.createComponent(DynamicViewerComponent);
       component = fixture.componentInstance;
       fixture.componentRef.setInput('contentId', 'test');
       fixture.componentRef.setInput('formId', 'f1');
-      fixture.componentRef.setInput('uploadOrigins', ['https://files.otro.com']);
+      fixture.componentRef.setInput('allowedOrigins', ['https://files.otro.com']);
       fixture.componentRef.setInput('formMappings', [
         { ...UPLOAD_MAPPING, fileUploadConfig: { uploadUrl: 'https://files.otro.com/up' } },
       ]);
@@ -843,5 +844,243 @@ describe('DynamicViewerComponent (integración de formularios)', () => {
 
       backend.expectOne('https://files.otro.com/up').flush('{}');
     });
+  });
+
+  describe('formulario de varios pasos', () => {
+    const STEPS_HTML = `
+      <form data-dynamic-stepper>
+        <div id="p1" data-dynamic-step="datos" data-step-title="Datos">
+          <input id="nombre"><div class="invalid-feedback" data-error-for="nombre"></div>
+        </div>
+        <div id="p2" data-dynamic-step="plan" data-step-title="Plan"><input id="plan"></div>
+        <div id="p3" data-dynamic-step="fin" data-step-title="Fin">
+          <input id="acepta" type="checkbox"><div class="invalid-feedback" data-error-for="acepta"></div>
+        </div>
+        <button id="prev" type="button" data-dynamic-action="previous_step" data-show-on-step="not-first">Atrás</button>
+        <button id="next" type="button" data-dynamic-action="next_step" data-show-on-step="not-last">Siguiente</button>
+        <button id="ayuda" type="button" data-dynamic-action="ayuda">Ayuda</button>
+        <button id="send" type="submit" data-show-on-step="last">Enviar</button>
+      </form>`;
+    const STEPS_MAPPINGS: FormFieldMapping[] = [
+      {
+        controlName: 'nombre',
+        domSelector: '#nombre',
+        errorDisplaySelector: "[data-error-for='nombre']",
+        validatorConfig: [{ type: 'required', message: 'Escribe tu nombre' }],
+      },
+      { controlName: 'plan', domSelector: '#plan', defaultValue: 'basico' },
+      {
+        controlName: 'acepta',
+        domSelector: '#acepta',
+        defaultValue: false,
+        errorDisplaySelector: "[data-error-for='acepta']",
+        validatorConfig: [{ type: 'requiredTrue', message: 'Debes aceptar' }],
+      },
+    ];
+    const shown = () => ['p1', 'p2', 'p3'].filter((id) => el<HTMLElement>(`#${id}`).style.display !== 'none');
+    const click = (id: string) => el<HTMLButtonElement>(`#${id}`).click();
+
+    it('arranca en el primer paso y lo informa por stepChanged', () => {
+      fixture = TestBed.createComponent(DynamicViewerComponent);
+      component = fixture.componentInstance;
+      const steps: StepChange[] = [];
+      component.stepChanged.subscribe((c) => steps.push(c));
+      fixture.componentRef.setInput('contentId', 'test');
+      fixture.componentRef.setInput('formId', 'f1');
+      fixture.componentRef.setInput('formMappings', STEPS_MAPPINGS);
+      fixture.componentRef.setInput('htmlContentString', STEPS_HTML);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+
+      expect(shown()).toEqual(['p1']);
+      expect(steps).toEqual([{ formId: 'f1', stepId: 'datos', index: 0, total: 3, direction: 'init', completed: [] }]);
+    });
+
+    describe('con el formulario ya montado', () => {
+      let steps: StepChange[];
+      let actions: string[];
+
+      beforeEach(() => {
+        steps = [];
+        actions = [];
+        render(STEPS_HTML, STEPS_MAPPINGS);
+        component.stepChanged.subscribe((c) => steps.push(c));
+        component.actionClicked.subscribe((p) => actions.push(p.action));
+      });
+
+      it('"Siguiente" con un campo inválido no avanza y muestra el error del paso', () => {
+        click('next');
+
+        expect(shown()).toEqual(['p1']);
+        expect(el("[data-error-for='nombre']").textContent).toBe('Escribe tu nombre');
+        expect(el('#nombre').classList).toContain('is-invalid');
+        expect(document.activeElement).toBe(el('#nombre'));
+      });
+
+      it('"Siguiente" con el paso válido avanza, y "Atrás" vuelve', () => {
+        type('#nombre', 'Ana');
+
+        click('next');
+        expect(shown()).toEqual(['p2']);
+        expect(steps[steps.length - 1]).toEqual(jasmine.objectContaining({ stepId: 'plan', direction: 'next', completed: ['datos'] }));
+
+        click('prev');
+        expect(shown()).toEqual(['p1']);
+        expect(el('#nombre').value).toBe('Ana'); // lo escrito se conserva
+      });
+
+      it('los errores de un paso posterior no se muestran antes de llegar a él', () => {
+        type('#nombre', 'Ana');
+
+        click('next');
+
+        expect(el("[data-error-for='acepta']").textContent).toBe('');
+      });
+
+      it('next_step y previous_step no llegan al host; las demás acciones sí', () => {
+        type('#nombre', 'Ana');
+        click('next');
+        click('prev');
+        click('ayuda');
+
+        expect(actions).toEqual(['ayuda']);
+      });
+
+      it('Enter (envío nativo) en un paso intermedio avanza en vez de enviar', () => {
+        const submitted = jasmine.createSpy('formSubmitted');
+        component.formSubmitted.subscribe(submitted);
+        type('#nombre', 'Ana');
+
+        el<HTMLFormElement>('form').dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+
+        expect(shown()).toEqual(['p2']);
+        expect(submitted).not.toHaveBeenCalled();
+      });
+
+      it('en el último paso, el envío funciona con los datos de todos los pasos', () => {
+        const submitted = jasmine.createSpy('formSubmitted');
+        component.formSubmitted.subscribe(submitted);
+        type('#nombre', 'Ana');
+        click('next');
+        click('next');
+        const acepta = el('#acepta');
+        acepta.checked = true;
+        acepta.dispatchEvent(new Event('change', { bubbles: true }));
+
+        click('send');
+
+        expect(submitted).toHaveBeenCalledOnceWith({
+          formId: 'f1',
+          data: { nombre: 'Ana', plan: 'basico', acepta: true },
+        });
+      });
+
+      it('al enviar con un paso anterior inválido, vuelve a ese paso y muestra su error', () => {
+        const errors: string[] = [];
+        component.componentError.subscribe((e) => errors.push(e));
+        type('#nombre', 'Ana');
+        click('next');
+        click('next'); // paso 3
+        type('#nombre', ''); // sin querer: el campo del paso 1 queda vacío (escribe desde otro lugar)
+        el('#acepta').checked = true;
+        el('#acepta').dispatchEvent(new Event('change', { bubbles: true }));
+
+        component.triggerSubmit();
+
+        expect(shown()).toEqual(['p1']);
+        expect(el("[data-error-for='nombre']").textContent).toBe('Escribe tu nombre');
+        expect(errors.some((e) => e.includes('inválido'))).toBeTrue();
+      });
+
+      it('un campo oculto por showIf (deshabilitado) no bloquea el avance', () => {
+        render(STEPS_HTML, [
+          { ...STEPS_MAPPINGS[0], showIf: 'plan === "premium"' },
+          STEPS_MAPPINGS[1],
+          STEPS_MAPPINGS[2],
+        ]);
+
+        click('next');
+
+        expect(shown()).toEqual(['p2']);
+      });
+    });
+
+    it('en una sección SIN pasos, next_step llega al host como cualquier otra acción', () => {
+      render('<form><input id="nombre"><button id="n" type="button" data-dynamic-action="next_step">x</button></form>', [
+        { controlName: 'nombre', domSelector: '#nombre' },
+      ]);
+      const actions: string[] = [];
+      component.actionClicked.subscribe((p) => actions.push(p.action));
+
+      click('n');
+
+      expect(actions).toEqual(['next_step']);
+    });
+
+    it('al reconstruir la sección se vuelve al primer paso', fakeAsync(() => {
+      render(STEPS_HTML, STEPS_MAPPINGS);
+      type('#nombre', 'Ana');
+      click('next');
+
+      fixture.componentRef.setInput('htmlContentString', STEPS_HTML + ' ');
+      fixture.detectChanges();
+      tick(); // la conexión del HTML nuevo se hace en el siguiente turno
+
+      expect(shown()).toEqual(['p1']);
+    }));
+
+  });
+
+  describe('autocompletado desde el JSON (sourceUrl)', () => {
+    const mapping = (extra: object = {}): FormFieldMapping => ({
+      controlName: 'ciudad',
+      domSelector: '#ciudad',
+      autoCompleteConfig: { sourceUrl: '/api/ciudades', ...extra },
+    });
+    const optionValues = () => Array.from(host.querySelectorAll('datalist option')).map((o) => (o as HTMLOptionElement).value);
+
+    it('mientras se escribe, pide las sugerencias y las muestra en el datalist del campo', fakeAsync(() => {
+      render('<input id="ciudad">', [mapping()]);
+      const backend = TestBed.inject(HttpTestingController);
+
+      type('#ciudad', 'cor');
+      tick(300);
+      backend.expectOne((r) => r.url === '/api/ciudades' && r.params.get('q') === 'cor').flush(['Córdoba', 'Corrientes']);
+
+      expect(optionValues()).toEqual(['Córdoba', 'Corrientes']);
+      expect(el('#ciudad').getAttribute('list')).toBe('datalist-ciudad');
+      // elegir una opción no es un cambio especial: es el valor del campo
+      expect(component.dynamicForm.get('ciudad')!.value).toBe('cor');
+    }));
+
+    it('lo que se escribe no se manda a un origen no permitido', fakeAsync(() => {
+      spyOn(console, 'warn');
+      render('<input id="ciudad">', [mapping({ sourceUrl: 'https://evil.example/espiar' })]);
+      const backend = TestBed.inject(HttpTestingController);
+
+      type('#ciudad', 'secreto');
+      tick(300);
+
+      backend.expectNone(() => true);
+      expect(optionValues()).toEqual([]);
+    }));
+
+    it('un origen declarado en allowedOrigins permite la URL absoluta', fakeAsync(() => {
+      fixture = TestBed.createComponent(DynamicViewerComponent);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('contentId', 'test');
+      fixture.componentRef.setInput('formId', 'f1');
+      fixture.componentRef.setInput('allowedOrigins', ['https://sugerencias.otro.com']);
+      fixture.componentRef.setInput('formMappings', [mapping({ sourceUrl: 'https://sugerencias.otro.com/q' })]);
+      fixture.componentRef.setInput('htmlContentString', '<input id="ciudad">');
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+      const backend = TestBed.inject(HttpTestingController);
+
+      type('#ciudad', 'ab');
+      tick(300);
+
+      backend.expectOne((r) => r.url === 'https://sugerencias.otro.com/q').flush(['x']);
+    }));
   });
 });

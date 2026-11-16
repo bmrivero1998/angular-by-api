@@ -1,0 +1,20 @@
+[
+  {
+    "id_DocumentHTMLCSS": "autocompletado",
+    "renderType": "dynamic",
+    "formId": "autocompletado",
+    "htmlComponent": "<form class=\"p-3\" style=\"max-width: 560px; margin: auto\"><h4>Autocompletado</h4><p class=\"text-muted\">Escribe al menos 2 letras (por ejemplo <code>cor</code> o <code>san</code>). Las sugerencias vienen de <code>GET /api/ciudades?q=…</code>: necesita <code>npm run mock-api</code> corriendo.</p><div class=\"mb-3\"><label class=\"form-label\" for=\"ciudad\">Ciudad (sugerencias desde el servidor)</label><input id=\"ciudad\" class=\"form-control\" autocomplete=\"off\" /></div><div class=\"mb-3\"><label class=\"form-label\" for=\"color\">Color (lista fija)</label><input id=\"color\" class=\"form-control\" autocomplete=\"off\" /></div></form>",
+    "formMappings": [
+      {
+        "controlName": "ciudad",
+        "domSelector": "#ciudad",
+        "autoCompleteConfig": { "sourceUrl": "/api/ciudades", "queryParam": "q", "minChars": 2, "debounceTime": 250 }
+      },
+      {
+        "controlName": "color",
+        "domSelector": "#color",
+        "autoCompleteConfig": { "source": ["Rojo", "Verde", "Azul", "Amarillo", "Violeta", "Naranja"] }
+      }
+    ]
+  }
+]

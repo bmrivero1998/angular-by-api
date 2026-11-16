@@ -42,6 +42,8 @@ export interface ControlChangeEvent {
 import { FormFieldMapping, ButtonConfig, FilePayload, FileUploadChange } from '../models/form-field-mapping.model';
 import { DynamicInyectCssService } from '../dom/dynamic-inyect-css.service';
 import { scopeClassFor } from '../dom/css-scoper';
+import { FormStepper, STEPPER_NEXT_ACTION, STEPPER_PREVIOUS_ACTION, StepChange } from '../forms/stepper/form-stepper';
+import { FormStepperService } from '../forms/stepper/form-stepper.service';
 import { FormDomSynchronizerService } from '../forms/sync/form-dom-synchronizer.service';
 import { DYNAMIC_CONFIG } from '../config/dynamic-config.token';
 import { DynamicValidationService } from '../forms/validation/dynamic-validation.service';
@@ -88,13 +90,15 @@ export class DynamicViewerComponent<T = any>
   @Input() dataBindings?: DataBinding[];
   /** Compensación en px para scroll suave (útil con headers sticky que tapan el top de la sección destino). */
   @Input() scrollOffset = 0;
-  /** Orígenes, además del de la página y de `DYNAMIC_CONFIG.apiUrl`, a los que se permite subir archivos. */
-  @Input() uploadOrigins: string[] = [];
+  /** Orígenes, además del de la página y de `DYNAMIC_CONFIG.apiUrl`, a los que el contenido puede enviar datos (subida de archivos, sugerencias). */
+  @Input() allowedOrigins: string[] = [];
 
   @Output() formSubmitted = new EventEmitter<{ formId: string; data: T }>();
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
   @Output() componentError = new EventEmitter<string>();
   @Output() fileSelected = new EventEmitter<FilePayload>();
+  /** Cambio de paso de un formulario de varios pasos (`data-dynamic-stepper`). Ver docs/steppers.md. */
+  @Output() stepChanged = new EventEmitter<StepChange>();
   /** Avance y resultado de la subida de un campo con `fileUploadConfig.uploadUrl`. */
   @Output() fileUploadChanged = new EventEmitter<FileUploadChange>();
   @Output() controlValueChange = new EventEmitter<ControlChangeEvent>();
@@ -109,6 +113,8 @@ export class DynamicViewerComponent<T = any>
   private activeMutationObserver: MutationObserver | null = null;
   private subscriptions = new Subscription();
   private domListeners: Array<() => void> = [];
+  /** Presente si el HTML de la sección es un formulario de varios pasos. */
+  private stepper: FormStepper | null = null;
   private config = inject(DYNAMIC_CONFIG, { optional: true });
 
   @ViewChild('htmlContainer') htmlContainerRef!: ElementRef<HTMLDivElement>;
@@ -134,7 +140,8 @@ export class DynamicViewerComponent<T = any>
     private timers: TimerManagerService,
     private buttonState: ButtonStateService,
     private externalLibsCleanup: ExternalLibsCleanupService,
-    private domInteractions: DomInteractionsService
+    private domInteractions: DomInteractionsService,
+    private stepperFactory: FormStepperService
   ) {}
 
   // --- LIFECYCLE ---
@@ -223,6 +230,8 @@ export class DynamicViewerComponent<T = any>
         data: this.dynamicForm.getRawValue(),
       });
     } else {
+      // Con varios pasos, el error puede estar en uno que ya no se ve: se vuelve a él.
+      this.stepper?.revealFirstInvalid();
       this.emitError(`Intento de submit con formulario inválido.`);
     }
   }
@@ -487,7 +496,7 @@ export class DynamicViewerComponent<T = any>
       isForm: this.isForm,
       formId: this.formId,
       contentId: this.contentId,
-      uploadOrigins: this.uploadOrigins,
+      allowedOrigins: this.allowedOrigins,
     };
   }
 
@@ -505,11 +514,16 @@ export class DynamicViewerComponent<T = any>
           this.formId,
           this.dynamicForm,
           this.htmlContainerRef.nativeElement,
-          this.formMappings
+          this.formMappings,
+          this.allowedOrigins
         );
 
+        // Después de conectar el formulario: la lógica condicional ya dejó
+        // deshabilitados los campos ocultos, que el stepper no debe contar.
+        this.setupStepper();
+
         this.domListeners.push(
-          ...this.domInteractions.setupFormSubmitPrevention(ctx, () => this.triggerSubmit()),
+          ...this.domInteractions.setupFormSubmitPrevention(ctx, () => this.onNativeSubmit()),
         );
 
         this.domListeners.push(...this.domInteractions.setupKeyFiltering(ctx));
@@ -533,7 +547,7 @@ export class DynamicViewerComponent<T = any>
         ),
       );
       this.domListeners.push(
-        ...this.domInteractions.setupActionClickListeners(ctx, (payload) => this.actionClicked.emit(payload)),
+        ...this.domInteractions.setupActionClickListeners(ctx, (payload) => this.handleAction(payload)),
       );
       this.cacheButtonElements();
       this.updateButtonStates();
@@ -559,6 +573,9 @@ export class DynamicViewerComponent<T = any>
   }
 
   private cleanupDomInteractions(): void {
+    this.stepper?.destroy();
+    this.stepper = null;
+
     this.activeMutationObserver?.disconnect();
     this.activeMutationObserver = null;
 
@@ -582,6 +599,52 @@ export class DynamicViewerComponent<T = any>
     el.querySelectorAll('style[data-dynamic-style]').forEach((s) => s.remove());
     el.querySelectorAll('script[data-dynamic-script]').forEach((s) => s.remove());
     el.querySelectorAll('[data-dynamic-element]').forEach((e) => e.remove());
+  }
+
+  // --- FORMULARIO DE VARIOS PASOS ---
+
+  private setupStepper(): void {
+    const container = this.htmlContainerRef.nativeElement;
+    const root = container.querySelector<HTMLElement>('[data-dynamic-stepper]');
+    if (!root || !this.formMappings) return;
+
+    this.stepper = this.stepperFactory.create({
+      root,
+      container,
+      form: this.dynamicForm,
+      mappings: this.formMappings,
+      onChange: (change) => this.stepChanged.emit({ formId: this.formId || this.contentId, ...change }),
+    });
+  }
+
+  /** Los botones `next_step` / `previous_step` mueven el stepper; cualquier otra acción llega al host. */
+  private handleAction(payload: DynamicClickPayload): void {
+    if (this.stepper && payload.action === STEPPER_NEXT_ACTION) {
+      this.stepper.next();
+      return;
+    }
+    if (this.stepper && payload.action === STEPPER_PREVIOUS_ACTION) {
+      this.stepper.previous();
+      return;
+    }
+    this.actionClicked.emit(payload);
+  }
+
+  /** Enter dentro de un paso intermedio avanza al siguiente; solo en el último envía. */
+  private onNativeSubmit(): void {
+    if (this.stepper && !this.stepper.isLast()) {
+      this.stepper.next();
+      return;
+    }
+    this.triggerSubmit();
+  }
+
+  /**
+   * Lleva al primer paso con un campo inválido (y muestra sus errores).
+   * Devuelve `true` si había alguno. Sin stepper no hace nada.
+   */
+  public revealFirstInvalidStep(): boolean {
+    return (this.stepper?.revealFirstInvalid() ?? -1) >= 0;
   }
 
   // --- BOTONES ---

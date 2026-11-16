@@ -1,7 +1,18 @@
-import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { inject, Injectable, Injector, Renderer2, RendererFactory2 } from '@angular/core';
 import { FormControl } from '@angular/forms';
-import { debounceTime, distinctUntilChanged } from 'rxjs';
-import { FormFieldMapping, MultiSelectConfig } from '../../models/form-field-mapping.model';
+import { Observable, catchError, debounceTime, defer, distinctUntilChanged, from, map, of, switchMap, throwError } from 'rxjs';
+import { DYNAMIC_CONFIG } from '../../config/dynamic-config.token';
+import {
+  AutoCompleteConfig,
+  AutoCompleteSuggestion,
+  FormFieldMapping,
+  MultiSelectConfig,
+} from '../../models/form-field-mapping.model';
+import { resolveTrustedUrl } from './trusted-url';
+
+/** Un datalist con cientos de opciones es inusable; se muestran las primeras. */
+const MAX_SUGGESTIONS = 50;
 
 /**
  * Inicializa y actualiza controles especiales del formulario: editores de
@@ -17,6 +28,8 @@ import { FormFieldMapping, MultiSelectConfig } from '../../models/form-field-map
 })
 export class FormSpecialControlsService {
   private renderer: Renderer2;
+  private readonly injector = inject(Injector);
+  private readonly config = inject(DYNAMIC_CONFIG, { optional: true });
 
   constructor(rendererFactory: RendererFactory2) {
     this.renderer = rendererFactory.createRenderer(null, null);
@@ -60,7 +73,11 @@ export class FormSpecialControlsService {
   }
 
   /**
-   * Configura autocomplete
+   * Configura el autocompletado de un campo con un `<datalist>` nativo:
+   * lista fija (`source` como arreglo), o sugerencias que se piden mientras
+   * se escribe (`source` como función, o `sourceUrl`).
+   *
+   * @param allowedOrigins orígenes de confianza para `sourceUrl` (ver `resolveTrustedUrl`).
    */
   public setupAutocomplete(
     control: FormControl,
@@ -68,6 +85,7 @@ export class FormSpecialControlsService {
     mapping: FormFieldMapping,
     container: HTMLElement,
     externalInstances: Map<string, any>,
+    allowedOrigins: string[] = [],
   ): void {
     const config = mapping.autoCompleteConfig!;
 
@@ -75,8 +93,8 @@ export class FormSpecialControlsService {
       if (el instanceof HTMLInputElement) {
         if (Array.isArray(config.source)) {
           this.createDatalist(el, config.source, mapping.controlName, container);
-        } else if (typeof config.source === 'function') {
-          this.setupDynamicAutocomplete(el, control, config, mapping, externalInstances);
+        } else if (typeof config.source === 'function' || config.sourceUrl) {
+          this.setupDynamicAutocomplete(el, control, config, mapping, container, externalInstances, allowedOrigins);
         }
       }
     });
@@ -339,7 +357,12 @@ export class FormSpecialControlsService {
     }
   }
 
-  private createDatalist(input: HTMLInputElement, source: string[], controlName: string, container: HTMLElement): void {
+  private createDatalist(
+    input: HTMLInputElement,
+    source: Array<string | AutoCompleteSuggestion>,
+    controlName: string,
+    container: HTMLElement,
+  ): void {
     const datalistId = `datalist-${controlName}`;
     let datalist = container.querySelector(`#${datalistId}`) as HTMLDataListElement;
 
@@ -353,45 +376,93 @@ export class FormSpecialControlsService {
       datalist.removeChild(datalist.firstChild);
     }
 
-    source.forEach((value) => {
+    source.slice(0, MAX_SUGGESTIONS).forEach((item) => {
+      const suggestion = typeof item === 'string' ? { value: item } : item;
       const option = this.renderer.createElement('option');
-      this.renderer.setProperty(option, 'value', value);
+      this.renderer.setProperty(option, 'value', suggestion.value);
+      if (suggestion.label) this.renderer.setProperty(option, 'label', suggestion.label);
       this.renderer.appendChild(datalist, option);
     });
 
     this.renderer.setAttribute(input, 'list', datalistId);
   }
 
+  /**
+   * Pide sugerencias mientras se escribe y las muestra en el datalist. Cada
+   * búsqueda cancela la anterior (una respuesta lenta de lo que ya se borró no
+   * pisa a la actual), y un fallo deja la lista vacía sin romper el campo.
+   */
   private setupDynamicAutocomplete(
     input: HTMLInputElement,
     control: FormControl,
-    config: any,
+    config: AutoCompleteConfig,
     mapping: FormFieldMapping,
+    container: HTMLElement,
     externalInstances: Map<string, any>,
+    allowedOrigins: string[],
   ): void {
-    const debounceTimeMs = config.debounceTime || 300;
-    const minChars = config.minChars || 2;
+    const debounceTimeMs = config.debounceTime ?? 300;
+    const minChars = config.minChars ?? 2;
 
     const sub = control.valueChanges
-      .pipe(debounceTime(debounceTimeMs), distinctUntilChanged())
-      .subscribe(async (value: string) => {
-        if (value && value.length >= minChars && typeof config.source === 'function') {
-          try {
-            const suggestions = await config.source(value);
-            this.showAutocompleteSuggestions(input, suggestions, mapping.controlName);
-          } catch (error) {
-            console.error('Error en autocomplete:', error);
-          }
-        }
-      });
+      .pipe(
+        debounceTime(debounceTimeMs),
+        distinctUntilChanged(),
+        switchMap((value): Observable<AutoCompleteSuggestion[]> => {
+          const text = value == null ? '' : String(value);
+          if (text.length < minChars) return of([]);
+
+          return this.fetchSuggestions(config, text, allowedOrigins).pipe(
+            catchError((error) => {
+              console.warn(`Autocompletado de "${mapping.controlName}": no se pudieron obtener sugerencias.`, error);
+              return of([]);
+            }),
+          );
+        }),
+      )
+      .subscribe((suggestions) => this.createDatalist(input, suggestions, mapping.controlName, container));
 
     externalInstances.set(`${mapping.controlName}-autocomplete-sub`, sub);
   }
 
-  private showAutocompleteSuggestions(input: HTMLInputElement, suggestions: string[], controlName: string): void {
-    // Implementar lógica para mostrar dropdown con sugerencias
-    // Esto depende de tu UI framework o implementación personalizada
-    console.log('Sugerencias para', controlName, ':', suggestions);
+  private fetchSuggestions(
+    config: AutoCompleteConfig,
+    text: string,
+    allowedOrigins: string[],
+  ): Observable<AutoCompleteSuggestion[]> {
+    if (typeof config.source === 'function') {
+      const source = config.source;
+      return defer(() => from(Promise.resolve(source(text)))).pipe(map((raw) => this.toSuggestions(raw)));
+    }
+
+    if (config.sourceUrl) {
+      let url: string;
+      try {
+        url = resolveTrustedUrl(config.sourceUrl, this.config, allowedOrigins, 'sugerencias');
+      } catch (error) {
+        return throwError(() => error);
+      }
+      const http = this.injector.get(HttpClient);
+      return http
+        .get<unknown>(url, { params: { [config.queryParam || 'q']: text } })
+        .pipe(map((raw) => this.toSuggestions(raw)));
+    }
+
+    return of([]);
+  }
+
+  /** Acepta un arreglo de textos, de números o de objetos `{ value, label? }`; descarta lo demás. */
+  private toSuggestions(raw: unknown): AutoCompleteSuggestion[] {
+    if (!Array.isArray(raw)) return [];
+
+    return raw.flatMap((item): AutoCompleteSuggestion[] => {
+      if (typeof item === 'string' || typeof item === 'number') return [{ value: String(item) }];
+      if (item && typeof item === 'object' && (typeof item.value === 'string' || typeof item.value === 'number')) {
+        const label = typeof item.label === 'string' && item.label ? item.label : undefined;
+        return [{ value: String(item.value), ...(label ? { label } : {}) }];
+      }
+      return [];
+    });
   }
 
   private createPasswordToggle(input: HTMLInputElement, container: HTMLElement): void {

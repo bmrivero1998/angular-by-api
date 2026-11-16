@@ -20,8 +20,8 @@ export interface DomInteractionsContext {
   isForm: boolean;
   formId: string;
   contentId: string;
-  /** Orígenes, además del de la página, a los que se permite subir archivos (ver FileUploadConfig.uploadUrl). */
-  uploadOrigins?: string[];
+  /** Orígenes, además del de la página, a los que el contenido puede enviar datos (ver `resolveTrustedUrl`). */
+  allowedOrigins?: string[];
 }
 
 /**
@@ -351,7 +351,7 @@ export class DomInteractionsService {
     control?.markAsPending();
     this.renderProgress(ctx, config, 0);
 
-    return transfer.upload(files, config, ctx.uploadOrigins ?? []).subscribe({
+    return transfer.upload(files, config, ctx.allowedOrigins ?? []).subscribe({
       next: (state) => {
         this.renderProgress(ctx, config, state.progress);
 

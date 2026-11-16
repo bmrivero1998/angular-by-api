@@ -5,12 +5,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Añadido (formularios de varios pasos)
+
+- **Stepper dirigido por el HTML** de la sección, sin configuración aparte: `data-dynamic-stepper` en un contenedor, `data-dynamic-step="id"` en cada paso y botones con `data-dynamic-action="next_step"` / `"previous_step"`. Ver `docs/steppers.md`.
+- "Siguiente" **valida los campos del paso actual**: si alguno es inválido (o está pendiente) no avanza, muestra sus errores y enfoca el primero. "Atrás" no valida y conserva lo escrito.
+- Enter en un paso intermedio avanza en vez de enviar. Al enviar con un paso anterior inválido, el formulario **vuelve a ese paso** y muestra el error (también con varias secciones y con botones `submit_form`).
+- Indicador de pasos opcional (`data-dynamic-stepper-nav`) con `data-step-state` (`active`, `completed`, `pending`) y `aria-current`; clic en un paso ya alcanzado vuelve a él. `data-show-on-step` muestra u oculta botones según el paso.
+- Evento `stepChanged` (`formId`, `stepId`, `index`, `total`, `direction`, `completed`).
+- Se elimina el antiguo `DynamicStepperService` (nunca se usó): era un servicio de estado con callbacks, sin forma de describirse en un JSON ni de dibujarse.
+
+### Añadido (autocompletado)
+
+- `autoCompleteConfig.sourceUrl` (y `queryParam`): las sugerencias se piden a un endpoint mientras se escribe (`GET <sourceUrl>?q=<texto>`), con lo que el autocompletado dinámico ya se puede usar desde el JSON. Acepta textos u objetos `{ value, label }`.
+- Cada búsqueda cancela la anterior, `minChars` y `debounceTime` aceptan 0, con menos de `minChars` se vacía la lista y un fallo la deja vacía sin romper el campo.
+- La `source` como función (solo librería Angular) por fin muestra lo que devuelve: antes lo imprimía en consola. Antes tampoco estaba documentado.
+- Ejemplos `pasos.json` y `autocompletado.json`, y `GET /api/ciudades` en `npm run mock-api`.
+
+### Cambiado (orígenes de confianza)
+
+- Lo que el JSON puede pedir que se mande a una URL (los archivos de la subida y lo que el usuario escribe en el autocompletado) se rige por **una sola regla**: URL relativa, o absoluta del origen de la página, de `api-url` / `apiUrl`, de `allowed-origins` (widget) o de `allowedOrigins` (`DYNAMIC_CONFIG`). Cualquier otra falla sin hacer ninguna petición. Se exporta `resolveTrustedUrl`.
+
 ### Añadido (subida de archivos)
 
 - **El motor ahora sube los archivos.** Con `fileUploadConfig.uploadUrl`, los archivos válidos se suben (multipart, una petición por archivo, en paralelo) apenas se eligen, con avance en `progressSelector`, lista de archivos en `fileListSelector` y el motivo de cualquier fallo en `errorDisplaySelector`. Al terminar, el valor del campo es la respuesta del servidor (un arreglo con varios archivos), y es lo que recibe `formSubmit`. Antes solo se validaba y se avisaba con `fileSelected`; la subida era cosa del host, que sigue pudiendo hacerla si no indica `uploadUrl`. Ver `docs/file-upload.md`.
 - Evento `fileUploadChanged` (`status`: `uploading`, `done` o `error`, con `progress`, `result` y `error`).
 - `method` (`POST` o `PUT`) y `fieldName` en `fileUploadConfig`.
-- **La URL de subida no se confía a ciegas.** Una URL absoluta solo se acepta si su origen es el de la página, el de `api-url` / `apiUrl` o uno declarado en `upload-origins` (widget) o `allowedUploadOrigins` (`DYNAMIC_CONFIG`); cualquier otra falla sin hacer ninguna petición.
+- **La URL de subida no se confía a ciegas.** Una URL absoluta solo se acepta si su origen es el de la página, el de `api-url` / `apiUrl` o uno declarado en `allowed-origins` (widget) o `allowedOrigins` (`DYNAMIC_CONFIG`); cualquier otra falla sin hacer ninguna petición.
 - `FileUploadTransferService` en la API pública de la librería.
 - Ejemplo `examples/schemas/archivos.json`, API de prueba `npm run mock-api` y proxy del playground.
 

@@ -62,8 +62,8 @@ describe('FileUploadTransferService', () => {
       expect(service.resolveUrl('https://api.mi-sitio.com/otra/ruta')).toBe('https://api.mi-sitio.com/otra/ruta');
     });
 
-    it('acepta orígenes declarados en allowedUploadOrigins y los que aporta el widget', () => {
-      setup({ allowedUploadOrigins: ['https://files.mi-sitio.com'] });
+    it('acepta orígenes declarados en allowedOrigins y los que aporta el widget', () => {
+      setup({ allowedOrigins: ['https://files.mi-sitio.com'] });
 
       expect(service.resolveUrl('https://files.mi-sitio.com/up')).toBe('https://files.mi-sitio.com/up');
       expect(service.resolveUrl('https://otro.com/up', ['https://otro.com'])).toBe('https://otro.com/up');

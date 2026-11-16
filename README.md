@@ -45,6 +45,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | [Primeros pasos](docs/getting-started.md) | Instalación en un host, atributos del elemento, requisitos. |
 | [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación. |
 | [Actualizar el contenido](docs/updating-content.md) | `static` vs `dynamic`, `updateSections`, `refresh`, `contentUpdated`. |
+| [Formularios de varios pasos](docs/steppers.md) | `data-dynamic-stepper`, validación por paso, indicador, `stepChanged`. |
 | [Subida de archivos](docs/file-upload.md) | `fileUploadConfig`, subida con avance, resultado en el formulario, orígenes permitidos. |
 | [Errores de carga](docs/errors.md) | Páginas de error, "Reintentar", `show-error-page`, `errorOccurred`. |
 | [Validadores y controles](docs/validators.md) | `formMappings`, validadores, `keyFilter`, máscaras, archivos. |
@@ -89,7 +90,9 @@ Más detalle en la [guía de contribución](CONTRIBUTING.md).
 
 ## Estado del proyecto
 
-En estabilización. La estructura y el formato del JSON están definidos; los problemas de formularios, lógica condicional, CSS, carga de contenido y acciones detectados en la revisión inicial están corregidos. Queda código sin terminar o sin uso: el stepper, la navegación y el registro de componentes (en `projects/engine/src/lib/experimental`), el autocompletado dinámico, el loader y los toasts del runtime, y `HtmlSanitizerInterceptor`, que no se registra por defecto.
+En estabilización. La estructura y el formato del JSON están definidos y los problemas detectados en la revisión inicial (formularios, lógica condicional, CSS, carga de contenido, acciones, subida de archivos) están corregidos. Funcionalidades incluidas: formularios con validación y máscaras, lógica condicional, formularios de varios pasos, subida de archivos, autocompletado, páginas de error y actualización parcial de contenido.
+
+Queda código sin uso: el loader, los toasts y su `LoaderInterceptor`, la navegación y el registro de componentes (en `projects/engine/src/lib/experimental`), y `HtmlSanitizerInterceptor`, que no se registra por defecto.
 
 ## Contribuir
 

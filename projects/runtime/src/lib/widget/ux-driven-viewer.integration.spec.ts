@@ -591,21 +591,92 @@ describe('UXDrivenViewerWidgetComponent (actualización de contenido, integraci�
       expect(events).toEqual([jasmine.stringMatching(/^error:.*origen no permitido/)]);
     });
 
-    it('upload-origins (texto separado por comas) permite otros orígenes', () => {
-      createWith({ uploadOrigins: 'https://files.a.com, https://files.b.com' }, [uploadSection('https://files.b.com/up')]);
+    it('allowed-origins (texto separado por comas) permite otros orígenes', () => {
+      createWith({ allowedOrigins: 'https://files.a.com, https://files.b.com' }, [uploadSection('https://files.b.com/up')]);
 
       choose();
 
       http.expectOne('https://files.b.com/up').flush('{}');
-      expect(component.trustedUploadOrigins).toEqual(['https://files.a.com', 'https://files.b.com']);
+      expect(component.trustedOrigins).toEqual(['https://files.a.com', 'https://files.b.com']);
     });
 
-    it('upload-origins también acepta un arreglo asignado por JS', () => {
-      createWith({ uploadOrigins: ['https://files.a.com'] }, [uploadSection('https://files.a.com/up')]);
+    it('allowed-origins también acepta un arreglo asignado por JS', () => {
+      createWith({ allowedOrigins: ['https://files.a.com'] }, [uploadSection('https://files.a.com/up')]);
 
       choose();
 
       http.expectOne('https://files.a.com/up').flush('{}');
+    });
+  });
+
+  describe('formularios de varios pasos', () => {
+    const stepsSection = () =>
+      section(
+        'registro',
+        'dynamic',
+        `<form data-dynamic-stepper>
+           <div id="p1" data-dynamic-step="datos"><input id="nombre"></div>
+           <div id="p2" data-dynamic-step="fin"><input id="correo"></div>
+           <button id="siguiente" type="button" data-dynamic-action="next_step" data-show-on-step="not-last">Siguiente</button>
+           <button id="enviar" type="button" data-dynamic-action="submit_form" data-show-on-step="last">Enviar</button>
+         </form>`,
+        {
+          formId: 'registro',
+          formMappings: [
+            { controlName: 'nombre', domSelector: '#nombre', validatorConfig: [{ type: 'required', message: 'x' }] },
+            { controlName: 'correo', domSelector: '#correo', validatorConfig: [{ type: 'required', message: 'x' }] },
+          ],
+        },
+      );
+    const fillInput = (selector: string, value: string) => {
+      const input = host.querySelector(selector) as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const visible = () => ['p1', 'p2'].filter((id) => (host.querySelector(`#${id}`) as HTMLElement).style.display !== 'none');
+    const press = (id: string) => (host.querySelector(`#${id}`) as HTMLButtonElement).click();
+
+    it('re-emite stepChanged para el host, con el formId de la sección', () => {
+      create([stepsSection()]);
+      const steps: string[] = [];
+      component.stepChanged.subscribe((c) => steps.push(`${c.formId}:${c.stepId}:${c.direction}`));
+      fillInput('#nombre', 'Ana');
+
+      press('siguiente');
+
+      expect(steps).toEqual(['registro:fin:next']);
+    });
+
+    it('enviar con un paso anterior inválido lleva a ese paso y avisa', () => {
+      create([stepsSection()]);
+      const errors: string[] = [];
+      const submitted: unknown[] = [];
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      fillInput('#nombre', 'Ana');
+      press('siguiente');
+      fillInput('#correo', 'a@b.co');
+      fillInput('#nombre', ''); // el paso 1 se invalida
+      expect(visible()).toEqual(['p2']);
+
+      press('enviar');
+
+      expect(visible()).toEqual(['p1']);
+      expect(submitted).toEqual([]);
+      expect(errors).toEqual(['El formulario contiene errores.']);
+    });
+
+    it('con todo válido, enviar emite el valor de todos los pasos', () => {
+      create([stepsSection()]);
+      const submitted: unknown[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      fillInput('#nombre', 'Ana');
+      press('siguiente');
+      fillInput('#correo', 'a@b.co');
+
+      press('enviar');
+
+      expect(submitted).toEqual([{ registro: { nombre: 'Ana', correo: 'a@b.co' } }]);
     });
   });
 });

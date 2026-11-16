@@ -241,7 +241,8 @@ describe('DynamicViewerComponent', () => {
         component.formId,
         component.dynamicForm,
         component.htmlContainerRef.nativeElement,
-        component.formMappings!
+        component.formMappings!,
+        [] // orígenes de confianza para las URLs del JSON (sin allowedOrigins)
       );
     });
 

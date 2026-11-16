@@ -11,6 +11,10 @@ viewer.addEventListener('modalResult', (e) => { /* data devuelta por un modal al
 viewer.addEventListener('fileSelected', (e) => {
   // e.detail = { controlName, file, formId, isMultiple }
 });
+viewer.addEventListener('stepChanged', (e) => {
+  // e.detail = { formId, stepId, index, total, direction, completed }
+  // Cambio de paso en un formulario de varios pasos. Ver "Formularios de varios pasos".
+});
 viewer.addEventListener('fileUploadChanged', (e) => {
   // e.detail = { controlName, formId, status: 'uploading' | 'done' | 'error', progress, result?, error? }
   // Avance y resultado de la subida de un campo con fileUploadConfig.uploadUrl. Ver "Subida de archivos".

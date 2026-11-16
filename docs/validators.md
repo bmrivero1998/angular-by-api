@@ -85,6 +85,33 @@ Solo filtra las teclas que escriben un carácter; no interfiere con atajos ni te
 
 El input muestra el valor formateado (`551-234-5678`), pero el formulario guarda y valida el valor **limpio**, sin literales (`5512345678`). Por eso `minLength` / `maxLength` cuentan solo los caracteres de dato: para el teléfono del ejemplo son `10`, no `12`.
 
+### `autoCompleteConfig` (sugerencias mientras se escribe)
+
+Muestra sugerencias con el `<datalist>` nativo del navegador, sin dependencias.
+
+```json
+{
+  "controlName": "ciudad",
+  "domSelector": "#ciudad",
+  "autoCompleteConfig": { "sourceUrl": "/api/ciudades", "minChars": 2, "debounceTime": 300 }
+}
+```
+
+| Opción | Qué hace |
+|---|---|
+| `source` | Una **lista fija** (`["Rojo", "Verde"]`). Desde la librería Angular también puede ser una **función** `(texto) => Promise<sugerencias>`; una función no cabe en un JSON. |
+| `sourceUrl` | Endpoint que devuelve las sugerencias: `GET <sourceUrl>?q=<lo escrito>`. Es la forma de usarlo desde el JSON. |
+| `queryParam` | Nombre del parámetro con lo escrito. Por defecto `q`. |
+| `minChars` | Mínimo de caracteres para buscar. Por defecto `2`. Con menos, no se pide nada y se vacía la lista. |
+| `debounceTime` | Espera, en ms, tras la última tecla. Por defecto `300`: tecleando rápido se hace una sola petición. |
+
+La respuesta es un arreglo de textos (`["Córdoba", "Corrientes"]`) o de objetos `{ "value": "AR", "label": "Argentina" }`; `value` es lo que se escribe en el campo y `label` el texto que se muestra al lado. Se muestran como máximo 50.
+
+- Cada búsqueda **cancela la anterior**: una respuesta lenta de lo que ya se cambió no pisa a la actual.
+- Si la petición falla, la lista queda vacía y el campo sigue funcionando (se avisa por consola).
+- Lo que el usuario escribe se manda a `sourceUrl`, así que **solo a orígenes de confianza**: una URL relativa, o una absoluta del origen de la página, de `api-url` o de `allowed-origins`. Cualquier otra no hace ninguna petición. Ver [A dónde se puede enviar datos](security.md#a-dónde-se-pueden-enviar-datos).
+- Para actualizar las sugerencias desde el host, la librería Angular tiene `updateAutocompleteSuggestions(controlName, suggestions)`.
+
 ### `fileUploadConfig` (para inputs `type="file"`)
 
 ```json

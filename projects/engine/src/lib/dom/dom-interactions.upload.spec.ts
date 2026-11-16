@@ -52,7 +52,7 @@ describe('DomInteractionsService: subida de archivos', () => {
 
   const file = (name = 'a.pdf', size = 2048) => new File([new Uint8Array(size)], name, { type: 'application/pdf' });
 
-  function setup(mapping: FormFieldMapping = MAPPING, uploadOrigins: string[] = []): void {
+  function setup(mapping: FormFieldMapping = MAPPING, allowedOrigins: string[] = []): void {
     const ctx: DomInteractionsContext = {
       container,
       dynamicForm: form,
@@ -60,7 +60,7 @@ describe('DomInteractionsService: subida de archivos', () => {
       isForm: true,
       formId: 'f1',
       contentId: 'c1',
-      uploadOrigins,
+      allowedOrigins,
     };
     unlisten = service.setupFileInputs(
       ctx,
