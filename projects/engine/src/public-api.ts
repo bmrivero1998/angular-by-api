@@ -23,6 +23,7 @@ export * from './lib/forms/validation/dynamic-validation.service';
 export * from './lib/forms/conditional/form-conditional-logic.service';
 export * from './lib/forms/controls/form-special-controls.service';
 export { FileUploadService } from './lib/forms/controls/file-upload.service';
+export * from './lib/forms/controls/file-upload-transfer.service';
 export * from './lib/forms/controls/input-masking.service';
 export * from './lib/forms/buttons/button-state.service';
 

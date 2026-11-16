@@ -23,7 +23,7 @@ import { ApiDrivenContent, DynamicClickPayload } from '@ux-driven-viewer/engine'
 import { ContentChange, DynamicViewerService } from '../content/dynamic-viewer.service';
 import { isCloseAction, isResetAction, isSubmitAction, RETRY_LOAD_ACTION } from '../actions/action-names';
 import { ModalService } from '../modal/modal.service';
-import { FilePayload } from '@ux-driven-viewer/engine';
+import { FilePayload, FileUploadChange } from '@ux-driven-viewer/engine';
 
 /** Snapshot del FormGroup completo, emitido en cada tick relevante. */
 export interface FormStateSnapshot {
@@ -50,6 +50,11 @@ function toThreshold(value: unknown): number {
 }
 function toDebounce(value: unknown): number {
   return numberAttribute(value, 150);
+}
+/** `upload-origins="https://a.com, https://b.com"` (texto) o un arreglo asignado por JS. */
+function toOrigins(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+  return list.map((origin) => String(origin).trim()).filter(Boolean);
 }
 
 @Component({
@@ -107,6 +112,16 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Input({ transform: toThreshold }) backToTopThreshold = 400;
 
   // --------------------------------------------------------
+  // Input de subida de archivos
+  // --------------------------------------------------------
+  /**
+   * Orígenes (separados por coma) a los que se permite subir archivos además
+   * del de la página y del de `api-url`. Una `uploadUrl` absoluta hacia otro
+   * origen se rechaza.
+   */
+  @Input({ transform: toOrigins }) uploadOrigins: string[] = [];
+
+  // --------------------------------------------------------
   // Input de errores de carga
   // --------------------------------------------------------
   /**
@@ -134,6 +149,11 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   @Output() ready = new EventEmitter<boolean>();
   @Output() fileSelected = new EventEmitter<FilePayload>();
   /**
+   * Avance y resultado de la subida de un archivo (campos con
+   * `fileUploadConfig.uploadUrl`): `{ controlName, formId, status, progress, result?, error? }`.
+   */
+  @Output() fileUploadChanged = new EventEmitter<FileUploadChange>();
+  /**
    * Cada vez que cambia el contenido en pantalla. `detail.mode` indica qué
    * pasó: `initial` (primera carga), `patched` (solo se actualizaron las
    * secciones dynamic de `detail.changedIds`) o `reloaded` (cambió una
@@ -154,6 +174,8 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
   public content$: Observable<ApiDrivenContent[]>;
   /** Solo es verdadero durante la primera carga por API, cuando todavía no hay nada que mostrar. */
   public isLoading = false;
+  /** Orígenes a los que se puede subir archivos: `uploadOrigins` más el origen de `api-url`. */
+  public trustedUploadOrigins: string[] = [];
   /** Evita pedir el contenido dos veces: lo dispara tanto ngOnChanges como ngOnInit. */
   private initialContentRequested = false;
   public formGroup: FormGroup = new FormGroup({});
@@ -188,6 +210,17 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     this.exposeHostApi(host.nativeElement);
   }
 
+  /** El origen de `api-url` es de confianza para subir archivos; el resto lo declara el host. */
+  private updateTrustedUploadOrigins(): void {
+    const origins = [...this.uploadOrigins];
+    try {
+      if (this.apiUrl) origins.push(new URL(this.apiUrl, location.href).origin);
+    } catch {
+      // api-url no es una URL válida: no aporta ningún origen.
+    }
+    this.trustedUploadOrigins = Array.from(new Set(origins));
+  }
+
   /** Identidad de cada sección para el `trackBy` de la plantilla. */
   public trackSection = (index: number, item: ApiDrivenContent): string => this.dws.trackSection(index, item);
 
@@ -210,11 +243,14 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     if (this.externalForm) {
       this.formGroup = this.externalForm;
     }
+    this.updateTrustedUploadOrigins();
     this.initContentStrategy();
     this.subscribeToFormState();
   }
 
   ngOnChanges(changes: SimpleChanges): void {
+    if (changes['apiUrl'] || changes['uploadOrigins']) this.updateTrustedUploadOrigins();
+
     const jsonChange = changes['localSchema'];
     const apiChange = changes['apiUrl'];
 
@@ -489,6 +525,11 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
    * siempre la misma forma: `{ [formId]: { campo: valor } }`.
    */
   private submitAllForms(): void {
+      if (this.formGroup.pending) {
+        // Una subida de archivos (o un validador asíncrono) sigue en curso.
+        this.errorOccurred.emit('Hay operaciones en curso (por ejemplo, un archivo subiéndose). Espera a que terminen para enviar.');
+        return;
+      }
       if (this.formGroup.valid) {
         this.formSubmit.emit(this.formGroup.value);
       } else {

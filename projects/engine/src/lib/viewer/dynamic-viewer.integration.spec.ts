@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpEventType, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { DynamicViewerComponent } from './dynamic-viewer.component';
 import { FormFieldMapping, ButtonConfig } from '../models/form-field-mapping.model';
@@ -688,6 +688,160 @@ describe('DynamicViewerComponent (integración de formularios)', () => {
       fixture.detectChanges();
 
       expect(border(pageElement)).toBe('0px');
+    });
+  });
+
+  describe('subida de archivos', () => {
+    const UPLOAD_HTML = `
+      <form>
+        <input id="doc" type="file">
+        <progress id="avance"></progress>
+        <ul id="lista"></ul>
+        <div class="invalid-feedback" data-error-for="doc"></div>
+        <button id="send" type="submit">Enviar</button>
+      </form>`;
+    const UPLOAD_MAPPING: FormFieldMapping = {
+      controlName: 'doc',
+      domSelector: '#doc',
+      errorDisplaySelector: "[data-error-for='doc']",
+      validatorConfig: [{ type: 'required', message: 'Adjunta un archivo' }],
+      fileUploadConfig: { uploadUrl: '/api/archivos', progressSelector: '#avance', fileListSelector: '#lista' },
+    };
+    const SEND: ButtonConfig[] = [{ selector: '#send', disableWhen: 'formIsInvalidOrPristine' }];
+
+    let backend: HttpTestingController;
+
+    beforeEach(() => {
+      render(UPLOAD_HTML, [UPLOAD_MAPPING], SEND);
+      backend = TestBed.inject(HttpTestingController);
+    });
+
+    function choose(name = 'contrato.pdf', size = 3000): void {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([new Uint8Array(size)], name, { type: 'application/pdf' }));
+      const input = el('#doc');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    it('antes de elegir un archivo, un campo obligatorio mantiene el formulario inválido', () => {
+      expect(component.dynamicForm.get('doc')!.invalid).toBeTrue();
+    });
+
+    it('mientras sube, el formulario está pendiente: no se puede enviar y se avisa por qué', () => {
+      choose();
+      const submitted = jasmine.createSpy('formSubmitted');
+      const errors: string[] = [];
+      component.formSubmitted.subscribe(submitted);
+      component.componentError.subscribe((e) => errors.push(e));
+
+      component.triggerSubmit();
+
+      expect(component.dynamicForm.pending).toBeTrue();
+      expect(submitted).not.toHaveBeenCalled();
+      expect(errors.some((e) => e.includes('en curso'))).toBeTrue();
+      backend.expectOne('/api/archivos').flush('{}');
+    });
+
+    it('un botón con formIsPending/formIsInvalid se deshabilita mientras sube y se habilita al terminar', () => {
+      choose();
+      expect(el<HTMLButtonElement>('#send').disabled).toBeTrue();
+
+      backend.expectOne('/api/archivos').flush('{"id":7}');
+
+      expect(el<HTMLButtonElement>('#send').disabled).toBeFalse();
+    });
+
+    it('muestra el avance y la lista de archivos', () => {
+      choose('contrato.pdf', 3000);
+
+      backend.expectOne('/api/archivos').event({ type: HttpEventType.UploadProgress, loaded: 1500, total: 3000 });
+
+      expect(el<HTMLProgressElement>('#avance').value).toBe(50);
+      expect(el('#lista li').textContent).toBe('contrato.pdf (2.93 KB)');
+    });
+
+    it('al terminar, el envío lleva la respuesta del servidor como valor del campo', () => {
+      choose();
+      backend.expectOne('/api/archivos').flush('{"id":7,"url":"/f/7"}');
+      const submitted = jasmine.createSpy('formSubmitted');
+      component.formSubmitted.subscribe(submitted);
+
+      component.triggerSubmit();
+
+      expect(submitted).toHaveBeenCalledOnceWith({ formId: 'f1', data: { doc: { id: 7, url: '/f/7' } } });
+    });
+
+    it('si falla, el motivo aparece donde el JSON lo indica, el campo se marca inválido y el input se vacía', () => {
+      choose('contrato.pdf');
+
+      backend.expectOne('/api/archivos').flush('', { status: 500, statusText: 'Error' });
+
+      expect(el("[data-error-for='doc']").textContent).toContain('No se pudo subir "contrato.pdf" (HTTP 500)');
+      expect(el('#doc').classList).toContain('is-invalid');
+      expect(el('#doc').value).toBe('');
+      expect(el<HTMLProgressElement>('#avance').value).toBe(0);
+      expect(component.dynamicForm.get('doc')!.value).toBeNull();
+    });
+
+    it('el formulario no se puede enviar tras un fallo, y vuelve a poder tras reintentar con éxito', () => {
+      choose();
+      backend.expectOne('/api/archivos').flush('', { status: 500, statusText: 'Error' });
+      const submitted = jasmine.createSpy('formSubmitted');
+      component.formSubmitted.subscribe(submitted);
+      component.triggerSubmit();
+      expect(submitted).not.toHaveBeenCalled();
+
+      choose();
+      backend.expectOne('/api/archivos').flush('{"id":9}');
+      component.triggerSubmit();
+
+      expect(submitted).toHaveBeenCalledOnceWith({ formId: 'f1', data: { doc: { id: 9 } } });
+    });
+
+    it('emite fileUploadChanged con cada etapa: subiendo, avance y hecho', () => {
+      const events: Array<{ status: string; progress: number }> = [];
+      component.fileUploadChanged.subscribe((c) => events.push({ status: c.status, progress: c.progress }));
+      choose('a.pdf', 1000);
+
+      const req = backend.expectOne('/api/archivos');
+      req.event({ type: HttpEventType.UploadProgress, loaded: 500, total: 1000 });
+      req.flush('{}');
+
+      expect(events).toEqual([
+        { status: 'uploading', progress: 0 },
+        { status: 'uploading', progress: 50 },
+        { status: 'done', progress: 100 },
+      ]);
+    });
+
+    it('una uploadUrl hacia un origen no permitido se rechaza sin pedir nada y se explica', () => {
+      render(UPLOAD_HTML, [{ ...UPLOAD_MAPPING, fileUploadConfig: { uploadUrl: 'https://evil.example/robar' } }], SEND);
+      backend = TestBed.inject(HttpTestingController);
+
+      choose();
+
+      backend.expectNone(() => true);
+      expect(el("[data-error-for='doc']").textContent).toContain('origen no permitido');
+    });
+
+    it('un origen declarado en uploadOrigins permite la URL absoluta', () => {
+      fixture = TestBed.createComponent(DynamicViewerComponent);
+      component = fixture.componentInstance;
+      fixture.componentRef.setInput('contentId', 'test');
+      fixture.componentRef.setInput('formId', 'f1');
+      fixture.componentRef.setInput('uploadOrigins', ['https://files.otro.com']);
+      fixture.componentRef.setInput('formMappings', [
+        { ...UPLOAD_MAPPING, fileUploadConfig: { uploadUrl: 'https://files.otro.com/up' } },
+      ]);
+      fixture.componentRef.setInput('htmlContentString', UPLOAD_HTML);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+      backend = TestBed.inject(HttpTestingController);
+
+      choose();
+
+      backend.expectOne('https://files.otro.com/up').flush('{}');
     });
   });
 });

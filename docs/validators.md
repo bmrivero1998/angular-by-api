@@ -95,10 +95,13 @@ El input muestra el valor formateado (`551-234-5678`), pero el formulario guarda
     "accept": ".pdf,.jpg,.jpeg,.png",
     "multiple": false,
     "maxSize": 5242880,
-    "maxCount": 1
+    "maxCount": 1,
+    "uploadUrl": "/api/archivos"
   }
 }
 ```
+
+Valida el tipo, el tamaño y la cantidad al elegir, y con `uploadUrl` también **sube** los archivos y deja la respuesta del servidor como valor del campo. Todas las opciones y el flujo completo están en [Subida de archivos](file-upload.md).
 
 ---
 

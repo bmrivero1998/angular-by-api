@@ -1,9 +1,11 @@
-import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
+import { Injectable, Injector, Renderer2, RendererFactory2 } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { FormGroup } from '@angular/forms';
 import { DynamicClickPayload } from '../models/dynamic-content.model';
-import { FormFieldMapping, FilePayload } from '../models/form-field-mapping.model';
+import { FormFieldMapping, FilePayload, FileUploadChange, FileUploadConfig } from '../models/form-field-mapping.model';
 import { InputMaskingService } from '../forms/controls/input-masking.service';
 import { FileUploadService } from '../forms/controls/file-upload.service';
+import { FileUploadTransferService } from '../forms/controls/file-upload-transfer.service';
 
 /**
  * Snapshot de lo que un DynamicViewerComponent necesita para cablear los
@@ -18,6 +20,8 @@ export interface DomInteractionsContext {
   isForm: boolean;
   formId: string;
   contentId: string;
+  /** Orígenes, además del de la página, a los que se permite subir archivos (ver FileUploadConfig.uploadUrl). */
+  uploadOrigins?: string[];
 }
 
 /**
@@ -43,6 +47,7 @@ export class DomInteractionsService {
     rendererFactory: RendererFactory2,
     private inputMasking: InputMaskingService,
     private fileUpload: FileUploadService,
+    private injector: Injector,
   ) {
     this.renderer = rendererFactory.createRenderer(null, null);
   }
@@ -223,6 +228,7 @@ export class DomInteractionsService {
     ctx: DomInteractionsContext,
     onFileSelected: (payload: FilePayload) => void,
     onControlError: (controlName: string, error: any) => void,
+    onUploadChange?: (change: FileUploadChange) => void,
   ): Array<() => void> {
     if (!ctx.formMappings) return [];
 
@@ -236,51 +242,169 @@ export class DomInteractionsService {
     fileMappings.forEach((mapping) => {
       const element = ctx.container.querySelector(mapping.domSelector) as HTMLInputElement;
       if (!element) return;
+      const config = mapping.fileUploadConfig;
 
-      if (mapping.fileUploadConfig?.accept) {
-        this.renderer.setAttribute(element, 'accept', mapping.fileUploadConfig.accept);
+      if (config?.accept) {
+        this.renderer.setAttribute(element, 'accept', config.accept);
       }
-      if (mapping.fileUploadConfig?.multiple) {
+      if (config?.multiple) {
         this.renderer.setAttribute(element, 'multiple', 'true');
       }
 
+      // Subida en curso de este campo. Elegir otros archivos la cancela
+      // (aborta la petición), igual que destruir el formulario.
+      let activeUpload: Subscription | null = null;
+      const cancelUpload = () => {
+        activeUpload?.unsubscribe();
+        activeUpload = null;
+      };
+      listeners.push(cancelUpload);
+
+      const control = () => ctx.dynamicForm.get(mapping.controlName);
+
       listeners.push(
         this.renderer.listen(element, 'change', (event: any) => {
+          cancelUpload();
+
           const files = event.target.files;
           if (!files || files.length === 0) {
-            ctx.dynamicForm.get(mapping.controlName)?.setValue(null);
+            control()?.setValue(null);
+            this.renderFileList(ctx, config, []);
+            this.renderProgress(ctx, config, null);
             return;
           }
 
           const fileArray = Array.from(files) as File[];
-          const fileToEmit = mapping.fileUploadConfig?.multiple ? fileArray : fileArray[0];
+          const fileToEmit = config?.multiple ? fileArray : fileArray[0];
 
-          const validationErrors = this.fileUpload.validateFiles(fileArray, mapping.fileUploadConfig);
+          const validationErrors = this.fileUpload.validateFiles(fileArray, config);
           if (validationErrors.length > 0) {
             // El archivo rechazado no debe quedar como valor del formulario.
             // Va antes de reportar el error: cambiar el valor revalida el
             // control y borraría el error recién puesto.
-            ctx.dynamicForm.get(mapping.controlName)?.setValue(null, { emitEvent: false });
+            control()?.setValue(null, { emitEvent: false });
             element.value = '';
+            this.renderFileList(ctx, config, []);
+            this.renderProgress(ctx, config, null);
             onControlError(mapping.controlName, { fileValidation: validationErrors });
             return;
           }
 
-          ctx.dynamicForm.get(mapping.controlName)?.setValue(fileToEmit);
-          ctx.dynamicForm.get(mapping.controlName)?.markAsDirty();
-          ctx.dynamicForm.get(mapping.controlName)?.markAsTouched();
+          control()?.setValue(fileToEmit);
+          control()?.markAsDirty();
+          control()?.markAsTouched();
+          this.renderFileList(ctx, config, fileArray);
 
           onFileSelected({
             controlName: mapping.controlName,
             file: fileToEmit,
             formId: ctx.formId || ctx.contentId,
-            isMultiple: mapping.fileUploadConfig?.multiple || false,
+            isMultiple: config?.multiple || false,
           });
+
+          if (config?.uploadUrl) {
+            activeUpload = this.startUpload(ctx, mapping, config, element, fileArray, onControlError, onUploadChange);
+          }
         }),
       );
     });
 
     return listeners;
+  }
+
+  /**
+   * Sube los archivos de un campo a su `uploadUrl`. Mientras dura, el control
+   * está `pending` (el formulario no es válido y `formIsPending` deshabilita
+   * los botones). Al terminar, el valor del control pasa a ser la respuesta del
+   * servidor; si falla, el control queda con el error `upload`.
+   */
+  private startUpload(
+    ctx: DomInteractionsContext,
+    mapping: FormFieldMapping,
+    config: FileUploadConfig,
+    element: HTMLInputElement,
+    files: File[],
+    onControlError: (controlName: string, error: any) => void,
+    onUploadChange?: (change: FileUploadChange) => void,
+  ): Subscription | null {
+    const control = ctx.dynamicForm.get(mapping.controlName);
+    const emit = (change: Omit<FileUploadChange, 'controlName' | 'formId'>) =>
+      onUploadChange?.({ controlName: mapping.controlName, formId: ctx.formId || ctx.contentId, ...change });
+
+    const fail = (message: string) => {
+      control?.setValue(null, { emitEvent: false });
+      element.value = ''; // para poder volver a elegir el mismo archivo
+      this.renderFileList(ctx, config, []);
+      this.renderProgress(ctx, config, null);
+      onControlError(mapping.controlName, { upload: message });
+      emit({ status: 'error', progress: 0, error: message });
+    };
+
+    let transfer: FileUploadTransferService;
+    try {
+      transfer = this.injector.get(FileUploadTransferService);
+    } catch {
+      fail('La subida de archivos necesita que la aplicación provea HttpClient.');
+      return null;
+    }
+
+    control?.markAsPending();
+    this.renderProgress(ctx, config, 0);
+
+    return transfer.upload(files, config, ctx.uploadOrigins ?? []).subscribe({
+      next: (state) => {
+        this.renderProgress(ctx, config, state.progress);
+
+        if (state.status === 'uploading') {
+          emit({ status: 'uploading', progress: state.progress });
+          return;
+        }
+
+        // Una respuesta vacía no deja el campo vacío: queda el nombre del archivo.
+        const result = Array.isArray(state.result)
+          ? state.result.map((item, index) => item ?? files[index]?.name ?? null)
+          : state.result ?? files[0].name;
+        control?.setValue(result);
+        control?.markAsDirty();
+        control?.markAsTouched();
+        emit({ status: 'done', progress: 100, result });
+      },
+      error: (error: unknown) => fail(error instanceof Error ? error.message : 'No se pudo subir el archivo.'),
+    });
+  }
+
+  /** Muestra el avance en `progressSelector`: un `<progress>` o el texto `45%`. `null` lo reinicia. */
+  private renderProgress(ctx: DomInteractionsContext, config: FileUploadConfig | undefined, percent: number | null): void {
+    if (!config?.progressSelector) return;
+    const el = ctx.container.querySelector(config.progressSelector);
+    if (!el) return;
+
+    if (el instanceof HTMLProgressElement) {
+      this.renderer.setProperty(el, 'max', 100);
+      this.renderer.setProperty(el, 'value', percent ?? 0);
+    } else {
+      this.renderer.setProperty(el, 'textContent', percent === null ? '' : `${percent}%`);
+    }
+  }
+
+  /** Lista los archivos elegidos en `fileListSelector`: un `<li>` por archivo en `<ul>`/`<ol>`, o texto separado por comas. */
+  private renderFileList(ctx: DomInteractionsContext, config: FileUploadConfig | undefined, files: File[]): void {
+    if (!config?.fileListSelector) return;
+    const el = ctx.container.querySelector(config.fileListSelector);
+    if (!el) return;
+
+    const labels = files.map((file) => `${file.name} (${this.fileUpload.formatBytes(file.size)})`);
+
+    if (el instanceof HTMLUListElement || el instanceof HTMLOListElement) {
+      el.replaceChildren();
+      labels.forEach((label) => {
+        const item = this.renderer.createElement('li');
+        this.renderer.setProperty(item, 'textContent', label);
+        this.renderer.appendChild(el, item);
+      });
+    } else {
+      this.renderer.setProperty(el, 'textContent', labels.join(', '));
+    }
   }
 
   public syncDomAttributes(ctx: DomInteractionsContext): void {

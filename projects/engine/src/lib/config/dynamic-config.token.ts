@@ -19,6 +19,14 @@ export interface DynamicLibraryConfig {
   clearHiddenFields?: boolean;      // Limpiar valores de campos ocultos
   emitVisibilityEvents?: boolean;   // Emitir eventos personalizados
 
+  // SUBIDA DE ARCHIVOS
+  /**
+   * Orígenes (ej. `https://files.miempresa.com`) a los que se permite subir
+   * archivos además de la página, de `apiUrl` y del `api-url` del widget. Una
+   * `uploadUrl` absoluta hacia otro origen se rechaza.
+   */
+  allowedUploadOrigins?: string[];
+
 }
 
 export interface DefaultErrorMessages {

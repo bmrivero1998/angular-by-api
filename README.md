@@ -45,6 +45,7 @@ Hay un host completo en [`examples/host-basico.html`](examples/host-basico.html)
 | [Primeros pasos](docs/getting-started.md) | Instalación en un host, atributos del elemento, requisitos. |
 | [Formato del JSON](docs/schema.md) | Secciones, convención de HTML, `buttonConfigs`, `dataBindings`, navegación. |
 | [Actualizar el contenido](docs/updating-content.md) | `static` vs `dynamic`, `updateSections`, `refresh`, `contentUpdated`. |
+| [Subida de archivos](docs/file-upload.md) | `fileUploadConfig`, subida con avance, resultado en el formulario, orígenes permitidos. |
 | [Errores de carga](docs/errors.md) | Páginas de error, "Reintentar", `show-error-page`, `errorOccurred`. |
 | [Validadores y controles](docs/validators.md) | `formMappings`, validadores, `keyFilter`, máscaras, archivos. |
 | [Lógica condicional](docs/conditional-logic.md) | `showIf` / `hideIf`. |
@@ -79,6 +80,7 @@ npm install
 npm start              # playground en http://localhost:4200
 npm run build          # librería (dist/engine) + widget (dist/elements/ux-driven-viewer.js)
 npm run test:ci        # todas las pruebas, una sola pasada
+npm run mock-api       # API de prueba para la subida de archivos (puerto 3001)
 ```
 
 El playground carga los esquemas de `examples/schemas` y muestra en vivo los eventos que emite el widget.

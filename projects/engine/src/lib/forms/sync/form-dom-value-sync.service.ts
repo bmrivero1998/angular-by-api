@@ -513,8 +513,14 @@ export class FormDomValueSyncService {
       mapping.asyncValidator?.errorKey.toLowerCase() === key ? mapping.asyncValidator.message : undefined;
 
     const errorValue = errors[errorKey];
+    // Los errores que traen su propio motivo: una lista de textos (archivos
+    // rechazados) o un texto (fallo de una subida).
     const fromErrorItself =
-      Array.isArray(errorValue) && typeof errorValue[0] === 'string' ? errorValue[0] : undefined;
+      Array.isArray(errorValue) && typeof errorValue[0] === 'string'
+        ? errorValue[0]
+        : typeof errorValue === 'string'
+          ? errorValue
+          : undefined;
 
     const defaults = this.config?.defaultErrorMessages;
 

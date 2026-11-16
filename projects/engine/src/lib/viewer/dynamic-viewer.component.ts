@@ -39,7 +39,7 @@ export interface ControlChangeEvent {
   pending: boolean;
   errors: any;
 }
-import { FormFieldMapping, ButtonConfig, FilePayload } from '../models/form-field-mapping.model';
+import { FormFieldMapping, ButtonConfig, FilePayload, FileUploadChange } from '../models/form-field-mapping.model';
 import { DynamicInyectCssService } from '../dom/dynamic-inyect-css.service';
 import { scopeClassFor } from '../dom/css-scoper';
 import { FormDomSynchronizerService } from '../forms/sync/form-dom-synchronizer.service';
@@ -88,11 +88,15 @@ export class DynamicViewerComponent<T = any>
   @Input() dataBindings?: DataBinding[];
   /** Compensación en px para scroll suave (útil con headers sticky que tapan el top de la sección destino). */
   @Input() scrollOffset = 0;
+  /** Orígenes, además del de la página y de `DYNAMIC_CONFIG.apiUrl`, a los que se permite subir archivos. */
+  @Input() uploadOrigins: string[] = [];
 
   @Output() formSubmitted = new EventEmitter<{ formId: string; data: T }>();
   @Output() actionClicked = new EventEmitter<DynamicClickPayload>();
   @Output() componentError = new EventEmitter<string>();
   @Output() fileSelected = new EventEmitter<FilePayload>();
+  /** Avance y resultado de la subida de un campo con `fileUploadConfig.uploadUrl`. */
+  @Output() fileUploadChanged = new EventEmitter<FileUploadChange>();
   @Output() controlValueChange = new EventEmitter<ControlChangeEvent>();
 
   safeHtmlContent!: SafeHtml;
@@ -204,6 +208,12 @@ export class DynamicViewerComponent<T = any>
       this.emitError(`triggerSubmit llamado pero dynamicForm no está definido.`);
       return;
     }
+    if (this.dynamicForm.pending) {
+      // Una subida (o un validador asíncrono) sigue en curso: aún no se sabe si es válido.
+      this.emitError(`Intento de submit con operaciones en curso (por ejemplo, un archivo subiéndose).`);
+      return;
+    }
+
     this.dynamicForm.markAllAsTouched();
     this.dynamicForm.updateValueAndValidity();
 
@@ -477,6 +487,7 @@ export class DynamicViewerComponent<T = any>
       isForm: this.isForm,
       formId: this.formId,
       contentId: this.contentId,
+      uploadOrigins: this.uploadOrigins,
     };
   }
 
@@ -508,6 +519,7 @@ export class DynamicViewerComponent<T = any>
             ctx,
             (payload) => this.fileSelected.emit(payload),
             (controlName, error) => this.setControlError(controlName, error),
+            (change) => this.fileUploadChanged.emit(change),
           ),
         );
       }

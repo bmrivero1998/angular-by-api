@@ -87,11 +87,13 @@
 
     [parentForm]="formGroup"
     [scrollOffset]="scrollOffset"
+    [uploadOrigins]="trustedUploadOrigins"
 
     (actionClicked)="handleViewerActionClick($event)"
     (componentError)="errorOccurred.emit($event)"
     (formSubmitted)="onFormSubmitted($event)"
     (fileSelected)="fileSelected.emit($event)"
+    (fileUploadChanged)="fileUploadChanged.emit($event)"
     (controlValueChange)="handleControlValueChange($event)">
   </app-dynamic-viewer>
 </ng-template>

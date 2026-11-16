@@ -486,4 +486,126 @@ describe('UXDrivenViewerWidgetComponent (actualización de contenido, integraci�
       expect(modal.close).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('subida de archivos', () => {
+    let http: HttpTestingController;
+
+    const uploadSection = (uploadUrl: string) =>
+      section('adjuntos', 'dynamic', '<form><input id="doc" type="file"><button id="send" type="submit">Enviar</button></form>', {
+        formId: 'adjuntos',
+        formMappings: [{ controlName: 'doc', domSelector: '#doc', fileUploadConfig: { uploadUrl } }],
+      });
+
+    function createWith(inputs: Record<string, unknown>, schemaOrUrl: unknown): void {
+      fixture = TestBed.createComponent(UXDrivenViewerWidgetComponent);
+      component = fixture.componentInstance;
+      Object.entries(inputs).forEach(([name, value]) => fixture.componentRef.setInput(name, value));
+      if (schemaOrUrl) fixture.componentRef.setInput('localSchema', schemaOrUrl);
+      fixture.detectChanges();
+      host = fixture.nativeElement;
+      http = TestBed.inject(HttpTestingController);
+    }
+
+    function choose(name = 'a.pdf'): void {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([new Uint8Array(500)], name));
+      const input = host.querySelector('#doc') as HTMLInputElement;
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    it('re-emite fileUploadChanged para el host', () => {
+      createWith({}, [uploadSection('/api/archivos')]);
+      const events: string[] = [];
+      component.fileUploadChanged.subscribe((c) => events.push(`${c.formId}/${c.controlName}:${c.status}`));
+
+      choose();
+      http.expectOne('/api/archivos').flush('{"id":1}');
+
+      expect(events).toEqual(['adjuntos/doc:uploading', 'adjuntos/doc:done']);
+    });
+
+    it('mientras algo sube, enviar con un botón de acción no emite formSubmit y avisa', () => {
+      createWith({}, [
+        section(
+          'adjuntos',
+          'dynamic',
+          '<form><input id="doc" type="file"><button id="enviar" type="button" data-dynamic-action="submit_form">Enviar</button></form>',
+          { formId: 'adjuntos', formMappings: [{ controlName: 'doc', domSelector: '#doc', fileUploadConfig: { uploadUrl: '/api/archivos' } }] },
+        ),
+      ]);
+      const submitted: unknown[] = [];
+      const errors: string[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      component.errorOccurred.subscribe((e) => errors.push(e));
+      choose();
+
+      (host.querySelector('#enviar') as HTMLButtonElement).click();
+
+      expect(submitted).toEqual([]);
+      expect(errors.some((e) => e.includes('archivo subiéndose'))).toBeTrue();
+      http.expectOne('/api/archivos').flush('{}');
+    });
+
+    it('después de subir, formSubmit lleva el resultado del servidor', () => {
+      createWith({}, [
+        section(
+          'adjuntos',
+          'dynamic',
+          '<form><input id="doc" type="file"><button id="enviar" type="button" data-dynamic-action="submit_form">Enviar</button></form>',
+          { formId: 'adjuntos', formMappings: [{ controlName: 'doc', domSelector: '#doc', fileUploadConfig: { uploadUrl: '/api/archivos' } }] },
+        ),
+      ]);
+      const submitted: unknown[] = [];
+      component.formSubmit.subscribe((v) => submitted.push(v));
+      choose();
+      http.expectOne('/api/archivos').flush('{"id":5}');
+
+      (host.querySelector('#enviar') as HTMLButtonElement).click();
+
+      expect(submitted).toEqual([{ adjuntos: { doc: { id: 5 } } }]);
+    });
+
+    it('el origen de api-url es de confianza: una URL absoluta a ese origen sube', () => {
+      createWith({ apiUrl: 'https://api.mi-sitio.com/pantalla' }, null);
+      http = TestBed.inject(HttpTestingController);
+      http.expectOne('https://api.mi-sitio.com/pantalla').flush([uploadSection('https://api.mi-sitio.com/archivos')]);
+      fixture.detectChanges();
+
+      choose();
+
+      http.expectOne('https://api.mi-sitio.com/archivos').flush('{}');
+    });
+
+    it('una URL absoluta a otro origen se rechaza aunque venga en el JSON', () => {
+      createWith({ apiUrl: 'https://api.mi-sitio.com/pantalla' }, null);
+      http = TestBed.inject(HttpTestingController);
+      http.expectOne('https://api.mi-sitio.com/pantalla').flush([uploadSection('https://evil.example/robar')]);
+      fixture.detectChanges();
+      const events: string[] = [];
+      component.fileUploadChanged.subscribe((c) => events.push(`${c.status}:${c.error ?? ''}`));
+
+      choose();
+
+      http.expectNone(() => true);
+      expect(events).toEqual([jasmine.stringMatching(/^error:.*origen no permitido/)]);
+    });
+
+    it('upload-origins (texto separado por comas) permite otros orígenes', () => {
+      createWith({ uploadOrigins: 'https://files.a.com, https://files.b.com' }, [uploadSection('https://files.b.com/up')]);
+
+      choose();
+
+      http.expectOne('https://files.b.com/up').flush('{}');
+      expect(component.trustedUploadOrigins).toEqual(['https://files.a.com', 'https://files.b.com']);
+    });
+
+    it('upload-origins también acepta un arreglo asignado por JS', () => {
+      createWith({ uploadOrigins: ['https://files.a.com'] }, [uploadSection('https://files.a.com/up')]);
+
+      choose();
+
+      http.expectOne('https://files.a.com/up').flush('{}');
+    });
+  });
 });

@@ -5,6 +5,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Sin publicar]
 
+### Añadido (subida de archivos)
+
+- **El motor ahora sube los archivos.** Con `fileUploadConfig.uploadUrl`, los archivos válidos se suben (multipart, una petición por archivo, en paralelo) apenas se eligen, con avance en `progressSelector`, lista de archivos en `fileListSelector` y el motivo de cualquier fallo en `errorDisplaySelector`. Al terminar, el valor del campo es la respuesta del servidor (un arreglo con varios archivos), y es lo que recibe `formSubmit`. Antes solo se validaba y se avisaba con `fileSelected`; la subida era cosa del host, que sigue pudiendo hacerla si no indica `uploadUrl`. Ver `docs/file-upload.md`.
+- Evento `fileUploadChanged` (`status`: `uploading`, `done` o `error`, con `progress`, `result` y `error`).
+- `method` (`POST` o `PUT`) y `fieldName` en `fileUploadConfig`.
+- **La URL de subida no se confía a ciegas.** Una URL absoluta solo se acepta si su origen es el de la página, el de `api-url` / `apiUrl` o uno declarado en `upload-origins` (widget) o `allowedUploadOrigins` (`DYNAMIC_CONFIG`); cualquier otra falla sin hacer ninguna petición.
+- `FileUploadTransferService` en la API pública de la librería.
+- Ejemplo `examples/schemas/archivos.json`, API de prueba `npm run mock-api` y proxy del playground.
+
+### Corregido (subida de archivos)
+
+- Mientras un archivo sube, un botón con `formIsInvalid` o `formIsInvalidOrPristine` seguía **habilitado**: Angular no considera un formulario pendiente ni válido ni inválido. Ahora ambas condiciones deshabilitan el botón también mientras haya algo pendiente (una subida o un validador asíncrono).
+- Enviar el formulario mientras algo está pendiente ya no se confunde con un formulario inválido: no se envía y se explica por qué.
+- `maxCount` estaba documentado pero no existía en el tipo `FileUploadConfig`, que además estaba definido dos veces.
+- Un error de un campo que trae su propio texto (el de una subida) se muestra en `errorDisplaySelector`.
+- `ButtonStateService` no tenía pruebas.
+
 ### Añadido (errores de carga)
 
 - **Página de error** cuando falla la primera carga por `api-url`: 404, sin acceso (401/403), servicio no disponible (sin red, 408, 429, 5xx) y error genérico. Los dos últimos ofrecen "Reintentar", que vuelve a pedir el contenido. Usa estilos propios, sin depender de Bootstrap ni de fuentes de iconos. Ver `docs/errors.md`.
