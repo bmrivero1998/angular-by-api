@@ -1,6 +1,5 @@
 import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
 import { FormGroup } from '@angular/forms';
-import { Subscription } from 'rxjs';
 import { DynamicClickPayload } from '../models/dynamic-content.model';
 import { FormFieldMapping, FilePayload } from '../models/form-field-mapping.model';
 import { InputMaskingService } from '../forms/controls/input-masking.service';
@@ -24,11 +23,9 @@ export interface DomInteractionsContext {
 /**
  * Cablea los listeners de interacción sobre el HTML inyectado dinámicamente
  * por DynamicViewerComponent: submit de formularios, clicks de acción,
- * filtrado de teclas, auto-formato de inputs, navegación/scroll de anclas,
- * inputs de archivo y clases visuales de validación.
+ * filtrado de teclas, navegación/scroll de anclas e inputs de archivo.
  *
- * Cada método devuelve las funciones de "unlisten" (o la Subscription, para
- * los casos basados en Observables) para que el componente las administre
+ * Cada método devuelve las funciones de "unlisten" para que el componente las administre
  * junto al resto de su ciclo de vida — este servicio no guarda estado propio.
  */
 @Injectable({
@@ -53,9 +50,20 @@ export class DomInteractionsService {
   public setupFormSubmitPrevention(ctx: DomInteractionsContext, onSubmit: () => void): Array<() => void> {
     const listeners: Array<() => void> = [];
     ctx.container.querySelectorAll('form').forEach((form) => {
+      // La validación la hace el motor. Sin `novalidate`, el navegador
+      // bloquea el submit de un campo `required` vacío con su propio globo y
+      // el evento `submit` nunca llega, así que no se pintarían los errores.
+      this.renderer.setAttribute(form, 'novalidate', '');
+
       listeners.push(
-        this.renderer.listen(form, 'submit', (event: Event) => {
+        this.renderer.listen(form, 'submit', (event: SubmitEvent) => {
           event.preventDefault();
+
+          // Un botón con `data-dynamic-action` ya se reporta como acción (ver
+          // setupActionClickListeners). Si además disparara el submit nativo,
+          // el mismo click produciría dos eventos distintos.
+          if (event.submitter?.hasAttribute('data-dynamic-action')) return;
+
           onSubmit();
         }),
       );
@@ -91,9 +99,9 @@ export class DomInteractionsService {
   public setupKeyFiltering(ctx: DomInteractionsContext): Array<() => void> {
     const unlisten = this.renderer.listen(ctx.container, 'keydown', (event: KeyboardEvent) => {
       const target = event.target as HTMLInputElement;
-      if (!target?.name || !['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      if (!target || !['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
 
-      const mapping = ctx.formMappings?.find((m) => m.controlName === target.name);
+      const mapping = this.findMappingForElement(ctx, target, (m) => !!m.keyFilter);
       if (!mapping?.keyFilter) return;
 
       if (mapping.keyFilter === 'decimal' && event.key === '.' && target.value.includes('.')) {
@@ -104,35 +112,6 @@ export class DomInteractionsService {
       if (this.inputMasking.shouldBlockKey(event, mapping.keyFilter)) {
         event.preventDefault();
       }
-    });
-    return [unlisten];
-  }
-
-  public setupAutoFormatting(
-    ctx: DomInteractionsContext,
-    scheduleTimeout: (fn: () => void, ms: number) => void,
-  ): Array<() => void> {
-    const unlisten = this.renderer.listen(ctx.container, 'input', (event: Event) => {
-      const target = event.target as HTMLInputElement;
-      const mapping = ctx.formMappings?.find(
-        (m) => m.controlName === target.name || m.domSelector === `#${target.id}`,
-      );
-      if (!mapping?.inputMask) return;
-
-      const cursorPosition = target.selectionStart;
-      if (cursorPosition === null) return;
-
-      const { formatted, clean } = this.inputMasking.applyMask(target.value, mapping.inputMask);
-
-      const control = ctx.dynamicForm.get(target.name);
-      if (control && control.value !== clean) {
-        control.setValue(clean, { emitEvent: false });
-      }
-
-      target.value = formatted;
-
-      const newCaret = this.inputMasking.computeCaretPosition(target.value, cursorPosition, formatted);
-      scheduleTimeout(() => target.setSelectionRange(newCaret, newCaret), 0);
     });
     return [unlisten];
   }
@@ -220,6 +199,26 @@ export class DomInteractionsService {
     return true;
   }
 
+  /**
+   * Busca el mapping que corresponde a un elemento del DOM por su
+   * `domSelector`, que es la fuente de verdad del enlace campo <-> control
+   * (el atributo `name` del HTML puede no coincidir con `controlName`).
+   */
+  private findMappingForElement(
+    ctx: DomInteractionsContext,
+    element: Element,
+    predicate: (mapping: FormFieldMapping) => boolean,
+  ): FormFieldMapping | undefined {
+    return ctx.formMappings?.find((mapping) => {
+      if (!predicate(mapping)) return false;
+      try {
+        return element.matches(mapping.domSelector);
+      } catch {
+        return false; // selector inválido en la configuración
+      }
+    });
+  }
+
   public setupFileInputs(
     ctx: DomInteractionsContext,
     onFileSelected: (payload: FilePayload) => void,
@@ -258,8 +257,12 @@ export class DomInteractionsService {
 
           const validationErrors = this.fileUpload.validateFiles(fileArray, mapping.fileUploadConfig);
           if (validationErrors.length > 0) {
-            onControlError(mapping.controlName, { fileValidation: validationErrors });
+            // El archivo rechazado no debe quedar como valor del formulario.
+            // Va antes de reportar el error: cambiar el valor revalida el
+            // control y borraría el error recién puesto.
+            ctx.dynamicForm.get(mapping.controlName)?.setValue(null, { emitEvent: false });
             element.value = '';
+            onControlError(mapping.controlName, { fileValidation: validationErrors });
             return;
           }
 
@@ -278,36 +281,6 @@ export class DomInteractionsService {
     });
 
     return listeners;
-  }
-
-  public setupErrorVisualsOnInputs(
-    ctx: DomInteractionsContext,
-    errorClasses: string[],
-    successClasses: string[],
-  ): Subscription {
-    const subscription = new Subscription();
-    if (!ctx.formMappings) return subscription;
-
-    ctx.formMappings.forEach((mapping) => {
-      const control = ctx.dynamicForm.get(mapping.controlName);
-      const inputElement = ctx.container.querySelector(mapping.domSelector) as HTMLElement;
-      if (!control || !inputElement) return;
-
-      subscription.add(
-        control.statusChanges.subscribe(() => {
-          const isInvalid = control.invalid && (control.dirty || control.touched);
-          const isValid = control.valid && (control.dirty || control.touched);
-
-          errorClasses.forEach((cls) => this.renderer.removeClass(inputElement, cls));
-          successClasses.forEach((cls) => this.renderer.removeClass(inputElement, cls));
-
-          if (isInvalid) errorClasses.forEach((cls) => this.renderer.addClass(inputElement, cls));
-          else if (isValid) successClasses.forEach((cls) => this.renderer.addClass(inputElement, cls));
-        }),
-      );
-    });
-
-    return subscription;
   }
 
   public syncDomAttributes(ctx: DomInteractionsContext): void {

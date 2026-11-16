@@ -13,10 +13,10 @@ import {
   EventEmitter,
   inject,
 } from '@angular/core';
-import { FormBuilder, FormGroup, ValidatorFn } from '@angular/forms';
+import { FormBuilder, FormGroup, PristineChangeEvent, TouchedChangeEvent, ValidatorFn } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import DOMPurify from 'dompurify';
-import { Subscription } from 'rxjs';
+import { Subscription, filter } from 'rxjs';
 import { CommonModule } from '@angular/common';
 
 import { DataBinding, DynamicClickPayload } from '../models/dynamic-content.model';
@@ -49,7 +49,6 @@ import { TimerManagerService } from '../dom/timer-manager.service';
 import { ButtonStateService } from '../forms/buttons/button-state.service';
 import { ExternalLibsCleanupService } from '../dom/external-libs-cleanup.service';
 import { DomInteractionsService, DomInteractionsContext } from '../dom/dom-interactions.service';
-import { DEFAULT_ERROR_CLASS, DEFAULT_SUCCESS_CLASS } from '../config/dynamic-viewer.constants';
 
 /**
  * @description
@@ -370,7 +369,7 @@ export class DynamicViewerComponent<T = any>
         ? [this.validationService.createAsyncValidator(map.asyncValidator)]
         : [];
 
-      groupConfig[map.controlName] = [map.defaultValue || '', { validators, asyncValidators }];
+      groupConfig[map.controlName] = [map.defaultValue ?? '', { validators, asyncValidators }];
     });
 
     this.dynamicForm = this.formBuilder.group(groupConfig);
@@ -386,17 +385,36 @@ export class DynamicViewerComponent<T = any>
     this.timers.safeTimeout(updateAll, 0, (e) => this.emitError(String(e)));
 
     this.subscribeIndividualControlChanges();
+    this.subscribeMatchControlRevalidation();
+  }
+
+  /**
+   * Un campo con `matchControl` depende del valor de OTRO control, y Angular
+   * solo revalida un control cuando cambia el suyo. Sin esto, corregir la
+   * contraseña original no quitaría el error de "confirmar contraseña".
+   */
+  private subscribeMatchControlRevalidation(): void {
+    this.formMappings?.forEach((mapping) => {
+      mapping.validatorConfig?.forEach((config) => {
+        if (config.type.toLowerCase() !== 'matchcontrol') return;
+
+        const dependent = this.dynamicForm.get(mapping.controlName);
+        const source = this.dynamicForm.get(String(config.value));
+        if (!dependent || !source) {
+          this.emitError(
+            `matchControl en "${mapping.controlName}": no existe el control "${config.value}" en este formulario.`,
+          );
+          return;
+        }
+
+        this.subscriptions.add(source.valueChanges.subscribe(() => dependent.updateValueAndValidity()));
+      });
+    });
   }
 
   /**
    * Emite `controlValueChange` por CADA control, en CADA cambio (valor,
-   * validez, dirty o touched). Antes este Output existía en la interfaz
-   * pública pero nunca se disparaba — nadie recibía nada.
-   *
-   * Se escuchan valueChanges (cambios de valor) y statusChanges (cambios de
-   * validez, que también capturan marcados de touched/dirty vía
-   * updateValueAndValidity) para no perder eventos que no muevan el valor
-   * pero sí el estado del control (ej. markAsTouched desde triggerSubmit).
+   * validez, dirty o touched).
    */
   private subscribeIndividualControlChanges(): void {
     if (!this.formMappings) return;
@@ -421,6 +439,18 @@ export class DynamicViewerComponent<T = any>
 
       this.subscriptions.add(control.valueChanges.subscribe(emitSnapshot));
       this.subscriptions.add(control.statusChanges.subscribe(emitSnapshot));
+
+      // touched/dirty no pasan por valueChanges ni statusChanges. Se escuchan
+      // aparte para avisar al host y para recalcular los botones cuyas
+      // condiciones dependen de ellos (formIsPristine, controlsDoNotMatch...).
+      this.subscriptions.add(
+        control.events
+          .pipe(filter((event) => event instanceof TouchedChangeEvent || event instanceof PristineChangeEvent))
+          .subscribe(() => {
+            emitSnapshot();
+            this.updateButtonStates();
+          }),
+      );
     });
   }
 
@@ -458,16 +488,7 @@ export class DynamicViewerComponent<T = any>
           ...this.domInteractions.setupFormSubmitPrevention(ctx, () => this.triggerSubmit()),
         );
 
-        const errorClasses = (this.config?.errorClassName || DEFAULT_ERROR_CLASS).split(' ');
-        const successClasses = (this.config?.successClassName || DEFAULT_SUCCESS_CLASS).split(' ');
-        this.subscriptions.add(this.domInteractions.setupErrorVisualsOnInputs(ctx, errorClasses, successClasses));
-
         this.domListeners.push(...this.domInteractions.setupKeyFiltering(ctx));
-        this.domListeners.push(
-          ...this.domInteractions.setupAutoFormatting(ctx, (fn, ms) =>
-            this.timers.safeTimeout(fn, ms, (e) => this.emitError(String(e))),
-          ),
-        );
         this.domInteractions.syncDomAttributes(ctx);
         this.domListeners.push(
           ...this.domInteractions.setupFileInputs(

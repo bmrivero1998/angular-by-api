@@ -2,7 +2,6 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { SimpleChange } from '@angular/core';
 import { DynamicViewerComponent } from './dynamic-viewer.component';
 import { ReactiveFormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
 import { DynamicInyectCssService } from '../dom/dynamic-inyect-css.service';
 import { FormDomSynchronizerService } from '../forms/sync/form-dom-synchronizer.service';
 import { DynamicValidationService } from '../forms/validation/dynamic-validation.service';
@@ -58,20 +57,16 @@ describe('DynamicViewerComponent', () => {
       'setupFormSubmitPrevention',
       'setupActionClickListeners',
       'setupKeyFiltering',
-      'setupAutoFormatting',
       'setupNavigationLinks',
       'setupFileInputs',
-      'setupErrorVisualsOnInputs',
       'syncDomAttributes',
       'processIdDomBindings',
     ]);
     domInteractionsSpy.setupFormSubmitPrevention.and.returnValue([]);
     domInteractionsSpy.setupActionClickListeners.and.returnValue([]);
     domInteractionsSpy.setupKeyFiltering.and.returnValue([]);
-    domInteractionsSpy.setupAutoFormatting.and.returnValue([]);
     domInteractionsSpy.setupNavigationLinks.and.returnValue([]);
     domInteractionsSpy.setupFileInputs.and.returnValue([]);
-    domInteractionsSpy.setupErrorVisualsOnInputs.and.returnValue(new Subscription());
 
     await TestBed.configureTestingModule({
       imports: [DynamicViewerComponent, ReactiveFormsModule],
@@ -252,9 +247,7 @@ describe('DynamicViewerComponent', () => {
 
     it('cablea los listeners de interacción a través de DomInteractionsService', () => {
       expect(domInteractionsSpy.setupFormSubmitPrevention).toHaveBeenCalled();
-      expect(domInteractionsSpy.setupErrorVisualsOnInputs).toHaveBeenCalled();
       expect(domInteractionsSpy.setupKeyFiltering).toHaveBeenCalled();
-      expect(domInteractionsSpy.setupAutoFormatting).toHaveBeenCalled();
       expect(domInteractionsSpy.syncDomAttributes).toHaveBeenCalled();
       expect(domInteractionsSpy.setupFileInputs).toHaveBeenCalled();
       expect(domInteractionsSpy.setupNavigationLinks).toHaveBeenCalled();

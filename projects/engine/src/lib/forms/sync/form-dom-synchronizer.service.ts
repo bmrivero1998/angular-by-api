@@ -98,7 +98,9 @@ export class FormDomSynchronizerService {
       );
       instanceSubscriptions.add(formToDomSubscriptions);
 
-      // 5. Aplicar estado inicial
+      // 5. Adoptar el valor que ya trae el HTML (si el control no tiene uno
+      //    propio) y aplicar el estado inicial
+      this.valueSync.adoptInitialDomValue(control, elements, mapping);
       this.valueSync.updateSingleControlDomState(control, elements, mapping, formContainer, externalInstances);
 
       // 6. Configurar autocomplete si existe

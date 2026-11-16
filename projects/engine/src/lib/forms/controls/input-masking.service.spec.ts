@@ -92,5 +92,28 @@ describe('InputMaskingService', () => {
       const pos = service.computeCaretPosition('1234', 4, '1234-5678');
       expect(pos).toBe(4);
     });
+
+    it('deja el caret al inicio si no había caracteres de dato antes del cursor', () => {
+      expect(service.computeCaretPosition('5', 0, '(5')).toBe(0);
+    });
+
+    it('salta el literal recién insertado al escribir el carácter que lo cruza', () => {
+      // Usuario escribe el 4º dígito de "999-999": "1234" -> "123-4".
+      expect(service.computeCaretPosition('1234', 4, '123-4')).toBe(5);
+    });
+  });
+
+  describe('shouldBlockKey (teclas que no escriben)', () => {
+    const key = (init: KeyboardEventInit) => new KeyboardEvent('keydown', init);
+
+    it('no bloquea teclas de función ni modificadores', () => {
+      expect(service.shouldBlockKey(key({ key: 'F5' }), 'int')).toBeFalse();
+      expect(service.shouldBlockKey(key({ key: 'Shift' }), 'int')).toBeFalse();
+      expect(service.shouldBlockKey(key({ key: 'a', altKey: true }), 'int')).toBeFalse();
+    });
+
+    it('sigue bloqueando un carácter no permitido', () => {
+      expect(service.shouldBlockKey(key({ key: 'a' }), 'int')).toBeTrue();
+    });
   });
 });

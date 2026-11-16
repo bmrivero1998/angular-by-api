@@ -10,8 +10,8 @@ import {
   HostListener
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AbstractControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { Observable, Subscription, finalize, take, debounceTime, distinctUntilChanged } from 'rxjs';
+import { AbstractControl, FormGroup, PristineChangeEvent, ReactiveFormsModule, TouchedChangeEvent } from '@angular/forms';
+import { Observable, Subscription, filter, finalize, take, debounceTime } from 'rxjs';
 
 // Imports de tu librería
 import { DynamicViewerComponent, ControlChangeEvent } from '@ux-driven-viewer/engine';
@@ -232,7 +232,13 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       : this.formGroup.valueChanges;
 
     this.formStateSub = merged$.subscribe(emit);
-    this.subs.add(this.formGroup.statusChanges.subscribe(emit));
+    this.formStateSub.add(this.formGroup.statusChanges.subscribe(emit));
+    // touched/dirty no pasan por valueChanges ni statusChanges.
+    this.formStateSub.add(
+      this.formGroup.events
+        .pipe(filter((event) => event instanceof TouchedChangeEvent || event instanceof PristineChangeEvent))
+        .subscribe(emit),
+    );
   }
 
   /** Bindeado desde el template a (controlValueChange) de cada <app-dynamic-viewer>. */
@@ -287,12 +293,7 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
     }
 
     if (action.includes('submit')) {
-      if (this.formGroup.valid) {
-        this.formSubmit.emit(this.formGroup.value);
-      } else {
-        this.formGroup.markAllAsTouched();
-        this.errorOccurred.emit('El formulario contiene errores.');
-      }
+      this.submitAllForms();
       return;
     }
 
@@ -349,8 +350,23 @@ export class UXDrivenViewerWidgetComponent implements OnInit, OnDestroy, OnChang
       }
   }
 
-  public onFormSubmitted(event: { formId: string, data: any}): void {
-      this.formSubmit.emit(event.data);
+  /** Submit nativo de una sección (Enter o un botón submit sin acción). */
+  public onFormSubmitted(_event: { formId: string, data: any}): void {
+      this.submitAllForms();
+  }
+
+  /**
+   * Único camino de submit del widget, venga de un submit nativo o de un botón
+   * con una acción "submit". Valida TODOS los formularios de la página y emite
+   * siempre la misma forma: `{ [formId]: { campo: valor } }`.
+   */
+  private submitAllForms(): void {
+      if (this.formGroup.valid) {
+        this.formSubmit.emit(this.formGroup.value);
+      } else {
+        this.formGroup.markAllAsTouched();
+        this.errorOccurred.emit('El formulario contiene errores.');
+      }
   }
 
   private findControlDeep(form: FormGroup, controlName: string, depth = 0): AbstractControl | null {
