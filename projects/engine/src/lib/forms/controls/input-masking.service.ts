@@ -19,7 +19,12 @@ export class InputMaskingService {
     if (
       ALLOWED_NAV_KEYS.includes(event.key) ||
       event.ctrlKey ||
-      event.metaKey
+      event.metaKey ||
+      event.altKey ||
+      // Solo se filtran teclas que escriben un carácter. Las demás (F5,
+      // Shift, CapsLock, teclas multimedia...) tienen nombres de varias letras
+      // y nunca deben bloquearse.
+      event.key.length !== 1
     ) {
       return false;
     }
@@ -89,6 +94,8 @@ export class InputMaskingService {
     const dataCharsBeforeCursor = originalValue
       .substring(0, cursorPosition)
       .replace(/[^a-zA-Z0-9]/g, '').length;
+
+    if (dataCharsBeforeCursor === 0) return 0;
 
     let newCursorPosition = 0;
     let dataCharsCounted = 0;

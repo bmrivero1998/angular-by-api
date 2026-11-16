@@ -27,6 +27,7 @@ describe('FormDomSynchronizerService', () => {
       'setProperty',
       'addClass',
       'removeClass',
+      'removeAttribute',
       'setAttribute'
     ]);
     
@@ -46,6 +47,16 @@ describe('FormDomSynchronizerService', () => {
     });
     service = TestBed.inject(FormDomSynchronizerService);
   });
+
+  /**
+   * Cada elemento registra dos listeners, en este orden: el de valor
+   * (input/change/evento custom) y el de blur que marca el control como
+   * touched. Devuelve el de valor del último elemento conectado.
+   */
+  function valueListener(): (event: any) => void {
+    const calls = renderer2Spy.listen.calls.all();
+    return calls[calls.length - 2].args[2] as (event: any) => void;
+  }
 
   it('should be created', () => {
     expect(service).toBeTruthy();
@@ -122,7 +133,7 @@ describe('FormDomSynchronizerService', () => {
       service.connect('form-1', formGroup, container, mappings);
 
       // Obtenemos el callback del listener registrado (Argumento 2 del Renderer2.listen)
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
       
       // Simulamos evento
       input.value = 'New Value';
@@ -136,7 +147,7 @@ describe('FormDomSynchronizerService', () => {
       const mappings: FormFieldMapping[] = [{ controlName: 'name', domSelector: '#nameInput' }];
       service.connect('form-1', formGroup, container, mappings);
 
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
       
       input.checked = true;
       callback({ target: input } as any);
@@ -150,7 +161,7 @@ describe('FormDomSynchronizerService', () => {
       const mappings: FormFieldMapping[] = [{ controlName: 'name', domSelector: '#nameInput' }];
       service.connect('form-1', formGroup, container, mappings);
 
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
       
       input.checked = true;
       callback({ target: input } as any);
@@ -164,7 +175,7 @@ describe('FormDomSynchronizerService', () => {
       const mappings: FormFieldMapping[] = [{ controlName: 'name', domSelector: '#nameInput' }];
       service.connect('form-1', formGroup, container, mappings);
 
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
       
       input.checked = false; // El navegador dispara change al deseleccionar también en algunos casos, o grupos
       callback({ target: input } as any);
@@ -185,7 +196,7 @@ describe('FormDomSynchronizerService', () => {
       const mappings: FormFieldMapping[] = [{ controlName: 'name', domSelector: '#sel' }];
       
       service.connect('form-1', formGroup, container, mappings);
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
 
       select.value = 'Option1';
       callback({ target: select } as any);
@@ -208,7 +219,7 @@ describe('FormDomSynchronizerService', () => {
       }];
 
       service.connect('form-1', formGroup, container, mappings);
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
 
       // Simulamos CustomEvent con detail
       const event = { detail: 'Custom Value' };
@@ -230,7 +241,7 @@ describe('FormDomSynchronizerService', () => {
       }];
 
       service.connect('form-1', formGroup, container, mappings);
-      const callback = renderer2Spy.listen.calls.mostRecent().args[2];
+      const callback = valueListener();
 
       // Simulamos evento donde target tiene la propiedad
       const event = { target: { myValue: 'Direct Value' } };

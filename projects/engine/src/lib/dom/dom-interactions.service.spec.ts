@@ -41,6 +41,32 @@ describe('DomInteractionsService', () => {
       expect(event.defaultPrevented).toBeTrue();
       expect(onSubmit).toHaveBeenCalled();
     });
+
+    it('marca el form como novalidate para que la validación nativa no bloquee el submit', () => {
+      const form = document.createElement('form');
+      container.appendChild(form);
+
+      service.setupFormSubmitPrevention(ctx(), () => {});
+
+      expect(form.hasAttribute('novalidate')).toBeTrue();
+    });
+
+    it('no delega el submit cuando lo dispara un botón con data-dynamic-action', () => {
+      const form = document.createElement('form');
+      const button = document.createElement('button');
+      button.setAttribute('data-dynamic-action', 'submit_form');
+      form.appendChild(button);
+      container.appendChild(form);
+      const onSubmit = jasmine.createSpy('onSubmit');
+
+      service.setupFormSubmitPrevention(ctx(), onSubmit);
+
+      const event = new SubmitEvent('submit', { cancelable: true, submitter: button });
+      form.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBeTrue();
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
   });
 
   describe('setupActionClickListeners', () => {
@@ -71,7 +97,7 @@ describe('DomInteractionsService', () => {
   describe('setupKeyFiltering', () => {
     it('bloquea teclas no numéricas para keyFilter: int', () => {
       const input = document.createElement('input');
-      input.name = 'phone';
+      input.id = 'phone';
       container.appendChild(input);
 
       service.setupKeyFiltering(ctx({ formMappings: [{ controlName: 'phone', domSelector: '#phone', keyFilter: 'int' }] }));
@@ -90,7 +116,7 @@ describe('DomInteractionsService', () => {
 
     it('bloquea un segundo punto decimal', () => {
       const input = document.createElement('input');
-      input.name = 'price';
+      input.id = 'price';
       input.value = '10.5';
       container.appendChild(input);
 
@@ -103,29 +129,38 @@ describe('DomInteractionsService', () => {
     });
   });
 
-  describe('setupAutoFormatting', () => {
-    it('aplica la máscara configurada y sincroniza el control con el valor limpio', fakeAsync(() => {
-      const dynamicForm = new FormGroup({ card: new FormControl('') });
-      const input = document.createElement('input');
-      input.name = 'card';
-      container.appendChild(input);
+  describe('setupKeyFiltering (casos límite)', () => {
+    function setup(html: string, mapping: { domSelector: string; keyFilter: string }): HTMLInputElement {
+      container.innerHTML = html;
+      service.setupKeyFiltering(ctx({ formMappings: [{ controlName: 'campo', ...mapping }] }));
+      return container.querySelector('input') as HTMLInputElement;
+    }
 
-      service.setupAutoFormatting(
-        ctx({ dynamicForm, formMappings: [{ controlName: 'card', domSelector: '#card', inputMask: '9999-9999' }] }),
-        (fn, ms) => setTimeout(fn, ms)
-      );
+    function press(input: HTMLInputElement, init: KeyboardEventInit): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { cancelable: true, bubbles: true, ...init });
+      input.dispatchEvent(event);
+      return event;
+    }
 
-      input.value = '12345678';
-      Object.defineProperty(input, 'selectionStart', { value: 8, configurable: true });
-      // El listener está delegado en el container: el evento nativo 'input'
-      // sí burbujea en el navegador real, pero uno construido a mano no,
-      // salvo que se indique bubbles:true explícitamente.
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      tick();
+    it('encuentra el mapping por domSelector aunque el name del HTML no coincida con controlName', () => {
+      const input = setup('<input id="el_1" name="otro_nombre">', { domSelector: '#el_1', keyFilter: 'int' });
 
-      expect(input.value).toBe('1234-5678');
-      expect(dynamicForm.get('card')?.value).toBe('12345678');
-    }));
+      expect(press(input, { key: 'A' }).defaultPrevented).toBeTrue();
+    });
+
+    it('no bloquea teclas que no escriben un carácter (F5, Shift) ni atajos con Alt', () => {
+      const input = setup('<input id="el_1">', { domSelector: '#el_1', keyFilter: 'int' });
+
+      expect(press(input, { key: 'F5' }).defaultPrevented).toBeFalse();
+      expect(press(input, { key: 'Shift' }).defaultPrevented).toBeFalse();
+      expect(press(input, { key: 'a', altKey: true }).defaultPrevented).toBeFalse();
+    });
+
+    it('ignora un domSelector inválido en vez de romper el listener', () => {
+      const input = setup('<input id="el_1">', { domSelector: '###', keyFilter: 'int' });
+
+      expect(() => press(input, { key: 'A' })).not.toThrow();
+    });
   });
 
   describe('setupNavigationLinks', () => {
@@ -220,31 +255,6 @@ describe('DomInteractionsService', () => {
       expect(dynamicForm.get('avatar')?.value).toBeNull();
       expect(onControlError).toHaveBeenCalled();
       expect(onFileSelected).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('setupErrorVisualsOnInputs', () => {
-    it('agrega/quita clases de error y éxito según el estado del control', () => {
-      const control = new FormControl('', Validators.required);
-      const input = document.createElement('input');
-      input.id = 'name';
-      container.appendChild(input);
-      const dynamicForm = new FormGroup({ name: control });
-
-      service.setupErrorVisualsOnInputs(
-        ctx({ dynamicForm, formMappings: [{ controlName: 'name', domSelector: '#name' }] }),
-        ['is-invalid'],
-        ['is-valid']
-      );
-
-      control.markAsTouched();
-      control.updateValueAndValidity();
-      expect(input.classList.contains('is-invalid')).toBeTrue();
-
-      control.setValue('Ana');
-      control.updateValueAndValidity();
-      expect(input.classList.contains('is-valid')).toBeTrue();
-      expect(input.classList.contains('is-invalid')).toBeFalse();
     });
   });
 

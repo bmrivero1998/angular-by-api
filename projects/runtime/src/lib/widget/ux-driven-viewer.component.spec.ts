@@ -183,13 +183,38 @@ describe('UXDrivenViewerWidgetComponent', () => {
       expect(component.errorOccurred.emit).toHaveBeenCalledWith(jasmine.stringMatching(/Error/));
     });
 
-    it('should emit formSubmit when onFormSubmitted is called', () => {
+    // El submit nativo de una sección y el botón con acción "submit" pasan
+    // por el mismo camino: se validan TODOS los formularios y se emite el
+    // valor completo, agrupado por formId.
+    it('emite formSubmit con todos los formularios agrupados por formId en un submit nativo', () => {
       spyOn(component.formSubmit, 'emit');
-      const eventPayload = { formId: 'test', data: { foo: 'bar' } };
+      component.formGroup = new FormGroup({
+        contacto: new FormGroup({ nombre: new FormControl('Ana') }),
+        envio: new FormGroup({ ciudad: new FormControl('CDMX') }),
+      });
 
-      component.onFormSubmitted(eventPayload);
+      component.onFormSubmitted({ formId: 'contacto', data: { nombre: 'Ana' } });
 
-      expect(component.formSubmit.emit).toHaveBeenCalledWith({ foo: 'bar' });
+      expect(component.formSubmit.emit).toHaveBeenCalledOnceWith({
+        contacto: { nombre: 'Ana' },
+        envio: { ciudad: 'CDMX' },
+      });
+    });
+
+    it('no emite formSubmit en un submit nativo si otro formulario de la página es inválido', () => {
+      spyOn(component.formSubmit, 'emit');
+      spyOn(component.errorOccurred, 'emit');
+      const ciudad = new FormControl('', Validators.required);
+      component.formGroup = new FormGroup({
+        contacto: new FormGroup({ nombre: new FormControl('Ana') }),
+        envio: new FormGroup({ ciudad }),
+      });
+
+      component.onFormSubmitted({ formId: 'contacto', data: { nombre: 'Ana' } });
+
+      expect(component.formSubmit.emit).not.toHaveBeenCalled();
+      expect(component.errorOccurred.emit).toHaveBeenCalledWith('El formulario contiene errores.');
+      expect(ciudad.touched).toBeTrue();
     });
   });
 

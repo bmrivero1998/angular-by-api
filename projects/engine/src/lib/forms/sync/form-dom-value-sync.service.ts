@@ -1,14 +1,22 @@
 import { inject, Injectable, Renderer2, RendererFactory2 } from '@angular/core';
-import { AbstractControl, FormControl } from '@angular/forms';
+import { AbstractControl, FormControl, ValidationErrors } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { FormFieldMapping } from '../../models/form-field-mapping.model';
 import { DYNAMIC_CONFIG } from '../../config/dynamic-config.token';
 import { FormSpecialControlsService } from '../controls/form-special-controls.service';
+import { InputMaskingService } from '../controls/input-masking.service';
 
+/** Mensajes de último recurso, indexados por la clave del error en minúsculas. */
 const SYSTEM_DEFAULT_ERROR_MESSAGES: Record<string, string> = {
   required: 'Este campo es obligatorio.',
   email: 'Formato de correo inválido.',
   minlength: 'El texto es muy corto.',
+  maxlength: 'El texto es muy largo.',
+  pattern: 'El formato no es válido.',
+  min: 'El valor es menor al mínimo permitido.',
+  max: 'El valor es mayor al máximo permitido.',
+  matchvalue: 'El valor no es el esperado.',
+  matchcontrol: 'Los valores no coinciden.',
   generic: 'Entrada inválida.',
 };
 
@@ -26,6 +34,7 @@ export class FormDomValueSyncService {
   private renderer: Renderer2;
   private config = inject(DYNAMIC_CONFIG, { optional: true });
   private specialControls = inject(FormSpecialControlsService);
+  private inputMasking = inject(InputMaskingService);
 
   private readonly ERROR_CLASSES = (this.config?.errorClassName || 'is-invalid').split(' ');
   private readonly SUCCESS_CLASSES = (this.config?.successClassName || 'is-valid').split(' ');
@@ -43,7 +52,8 @@ export class FormDomValueSyncService {
     elements.forEach((el) => {
       if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
         mapping.validatorConfig?.forEach((validator) => {
-          switch (validator.type) {
+          // Mismo criterio que resolveValidator: el tipo no distingue mayúsculas.
+          switch (validator.type.toLowerCase()) {
             case 'required':
               this.renderer.setAttribute(el, 'required', '');
               this.renderer.setAttribute(el, 'aria-required', 'true');
@@ -54,11 +64,14 @@ export class FormDomValueSyncService {
             case 'max':
               this.renderer.setAttribute(el, 'max', String(validator.value));
               break;
-            case 'minLength':
-              this.renderer.setAttribute(el, 'minlength', String(validator.value));
+            case 'minlength':
+              // Con máscara, el validador mide el valor limpio (sin literales)
+              // y el atributo nativo mediría el texto con guiones/paréntesis:
+              // truncaría lo que el usuario escribe. El largo lo da la máscara.
+              if (!mapping.inputMask) this.renderer.setAttribute(el, 'minlength', String(validator.value));
               break;
-            case 'maxLength':
-              this.renderer.setAttribute(el, 'maxlength', String(validator.value));
+            case 'maxlength':
+              if (!mapping.inputMask) this.renderer.setAttribute(el, 'maxlength', String(validator.value));
               break;
             case 'pattern':
               this.renderer.setAttribute(el, 'pattern', String(validator.value));
@@ -101,6 +114,8 @@ export class FormDomValueSyncService {
           newValue = mapping.useEventDetail
             ? (event as CustomEvent).detail
             : (event.target as Record<string, any>)[mapping.valueProperty];
+        } else if (el instanceof HTMLInputElement && this.isMaskable(el, mapping)) {
+          newValue = this.applyMaskToInput(el, mapping.inputMask!);
         } else if (el instanceof HTMLInputElement) {
           newValue = this.getInputValue(el, mapping);
         } else if (el instanceof HTMLSelectElement) {
@@ -113,9 +128,22 @@ export class FormDomValueSyncService {
 
         if (!this.valuesEqual(control.value, newValue)) {
           control.setValue(newValue, { emitEvent: true });
+          // Un cambio hecho por el usuario ensucia el control (igual que hace
+          // Angular con sus ControlValueAccessor). Va DESPUÉS de setValue:
+          // markAsDirty refresca el DOM, y antes de setValue reescribiría el
+          // input con el valor viejo.
+          control.markAsDirty();
         }
       });
       listeners.push(unlisten);
+
+      // Salir del campo lo marca como tocado: es lo que permite mostrar el
+      // error de un campo obligatorio que el usuario dejó vacío.
+      listeners.push(
+        this.renderer.listen(el, 'blur', () => {
+          if (!control.touched) control.markAsTouched();
+        }),
+      );
     });
 
     return listeners;
@@ -131,15 +159,13 @@ export class FormDomValueSyncService {
     container: HTMLElement,
     externalInstances: Map<string, any>,
   ): Subscription {
-    const combinedSubscription = new Subscription();
-
     const update = () =>
       this.updateSingleControlDomState(control, elements, mapping, container, externalInstances);
 
-    combinedSubscription.add(control.valueChanges.subscribe(update));
-    combinedSubscription.add(control.statusChanges.subscribe(update));
-
-    return combinedSubscription;
+    // `events` unifica valor, estado, touched y pristine. Con solo
+    // valueChanges/statusChanges el DOM no se enteraba de markAsTouched /
+    // markAllAsTouched (p. ej. tras un submit inválido) y los errores no se pintaban.
+    return control.events.subscribe(update);
   }
 
   /**
@@ -164,10 +190,88 @@ export class FormDomValueSyncService {
       this.applyValueToElement(el, value, mapping, externalInstances);
       this.renderer.setProperty(el, 'disabled', isDisabled);
       this.applyValidationClasses(el, isDisabled, isInvalid, isValid);
+      if (isInvalid) {
+        this.renderer.setAttribute(el, 'aria-invalid', 'true');
+      } else {
+        this.renderer.removeAttribute(el, 'aria-invalid');
+      }
       this.specialControls.updateSpecialElements(el, value, mapping, container);
     });
 
     this.updateErrorMessages(control, mapping, container);
+  }
+
+  /**
+   * Si el control no tiene valor propio (ni `defaultValue` ni datos
+   * iniciales), adopta el que ya trae el HTML: `checked`, `<option selected>`,
+   * `value="..."`. Sin esto, conectar el formulario borraba lo que el HTML
+   * mostraba (un <select> quedaba en blanco y un checkbox valía '' en vez de
+   * false).
+   */
+  public adoptInitialDomValue(
+    control: AbstractControl,
+    elements: NodeListOf<HTMLElement>,
+    mapping: FormFieldMapping,
+  ): void {
+    if (mapping.defaultValue !== undefined || mapping.valueProperty) return;
+    if (control.value !== '' || control.dirty) return;
+
+    const first = elements[0];
+    let domValue: any;
+
+    if (first instanceof HTMLInputElement) {
+      if (first.type === 'file') return;
+      if (first.type === 'radio') {
+        const checked = Array.from(elements).find(
+          (el): el is HTMLInputElement => el instanceof HTMLInputElement && el.checked,
+        );
+        if (!checked) return;
+        domValue = checked.value;
+      } else if (this.isMaskable(first, mapping)) {
+        domValue = this.inputMasking.applyMask(first.value, mapping.inputMask!).clean;
+      } else {
+        domValue = this.getInputValue(first, mapping);
+      }
+    } else if (first instanceof HTMLSelectElement) {
+      domValue = this.getSelectValue(first);
+    } else if (first instanceof HTMLTextAreaElement) {
+      domValue = first.value;
+    } else {
+      return;
+    }
+
+    if (domValue === '' || domValue === null || domValue === undefined) return;
+    control.setValue(domValue, { emitEvent: false });
+  }
+
+  /** La máscara solo aplica a inputs de texto (no a checkbox, number, date...). */
+  private isMaskable(input: HTMLInputElement, mapping: FormFieldMapping): boolean {
+    return !!mapping.inputMask && ['text', 'tel', 'search', 'password', ''].includes(input.type);
+  }
+
+  /**
+   * Reformatea el input según la máscara, conserva la posición del cursor y
+   * devuelve el valor limpio (sin literales), que es el que guarda el control
+   * y el que ven los validadores.
+   */
+  private applyMaskToInput(input: HTMLInputElement, mask: string): string {
+    const raw = input.value;
+    const caret = input.selectionStart;
+    const { formatted, clean } = this.inputMasking.applyMask(raw, mask);
+
+    if (raw !== formatted) {
+      input.value = formatted;
+      if (caret !== null) {
+        const position = this.inputMasking.computeCaretPosition(raw, caret, formatted);
+        try {
+          input.setSelectionRange(position, position);
+        } catch {
+          // Algunos tipos de input no admiten selección; no es un error.
+        }
+      }
+    }
+
+    return clean;
   }
 
   private determineDefaultEvent(element: HTMLElement): string {
@@ -262,6 +366,12 @@ export class FormDomValueSyncService {
   ): void {
     if (mapping.valueProperty) {
       this.renderer.setProperty(el, mapping.valueProperty, value);
+    } else if (el instanceof HTMLInputElement && this.isMaskable(el, mapping)) {
+      // El control guarda el valor limpio; el input muestra el formateado.
+      const formatted = this.inputMasking.applyMask(String(value ?? ''), mapping.inputMask!).formatted;
+      if (el.value !== formatted) {
+        this.renderer.setProperty(el, 'value', formatted);
+      }
     } else if (el instanceof HTMLInputElement) {
       this.applyInputValue(el, value);
     } else if (el instanceof HTMLSelectElement) {
@@ -284,6 +394,13 @@ export class FormDomValueSyncService {
         break;
       case 'radio':
         this.renderer.setProperty(input, 'checked', input.value === value);
+        break;
+      case 'file':
+        // Un input de archivo no admite que se le asigne un valor (lanza
+        // InvalidStateError); lo único permitido es vaciarlo.
+        if (value == null && input.value !== '') {
+          this.renderer.setProperty(input, 'value', '');
+        }
         break;
       case 'range':
       case 'number': {
@@ -362,23 +479,49 @@ export class FormDomValueSyncService {
     const isInvalid = control.invalid && (control.dirty || control.touched);
 
     if (isInvalid && control.errors) {
-      const firstErrorKey = Object.keys(control.errors)[0].toLowerCase();
-
-      const apiCustomMessage = mapping.validatorConfig?.find(
-        (v) => v.type.toLowerCase() === firstErrorKey,
-      )?.message;
-
-      const globalDefaultMessage = this.config?.defaultErrorMessages?.[firstErrorKey];
-
-      const finalMessage =
-        apiCustomMessage ||
-        globalDefaultMessage ||
-        SYSTEM_DEFAULT_ERROR_MESSAGES[firstErrorKey] ||
-        SYSTEM_DEFAULT_ERROR_MESSAGES['generic'];
+      const finalMessage = this.resolveErrorMessage(control.errors, mapping);
 
       this.renderer.setProperty(errorEl, 'textContent', finalMessage);
     } else {
       this.renderer.setProperty(errorEl, 'textContent', '');
     }
+  }
+
+  /**
+   * Elige el mensaje del primer error del control. Prioridad: mensaje del
+   * validador en el JSON > mensaje del validador asíncrono > mensaje que trae
+   * el propio error (archivos) > `defaultErrorMessages` global > genérico.
+   *
+   * Se busca por la CLAVE del error que reporta Angular, que no siempre
+   * coincide con el `type` del JSON: `requiredTrue` reporta `required`.
+   */
+  private resolveErrorMessage(errors: ValidationErrors, mapping: FormFieldMapping): string {
+    const errorKey = Object.keys(errors)[0];
+    const key = errorKey.toLowerCase();
+
+    const fromValidatorConfig = mapping.validatorConfig?.find((v) => {
+      const type = v.type.toLowerCase();
+      return type === key || (key === 'required' && type === 'requiredtrue');
+    })?.message;
+
+    const fromAsyncValidator =
+      mapping.asyncValidator?.errorKey.toLowerCase() === key ? mapping.asyncValidator.message : undefined;
+
+    const errorValue = errors[errorKey];
+    const fromErrorItself =
+      Array.isArray(errorValue) && typeof errorValue[0] === 'string' ? errorValue[0] : undefined;
+
+    const defaults = this.config?.defaultErrorMessages;
+
+    return (
+      fromValidatorConfig ||
+      fromAsyncValidator ||
+      fromErrorItself ||
+      defaults?.[key] ||
+      defaults?.[errorKey] ||
+      SYSTEM_DEFAULT_ERROR_MESSAGES[key] ||
+      defaults?.['generic'] ||
+      SYSTEM_DEFAULT_ERROR_MESSAGES['generic']
+    );
   }
 }

@@ -21,6 +21,30 @@ viewer.addEventListener('formStateChanged', (e) => {
 });
 ```
 
+## `formSubmit`
+
+Se emite **una sola vez** por intento de envío válido, venga de donde venga:
+
+- Enter dentro de un campo o un `<button type="submit">` sin acción.
+- Un botón cuya `data-dynamic-action` contenga `submit` (por ejemplo `submit_form`).
+
+Antes de emitir se validan **todos** los formularios de la página. Si alguno es inválido no se emite `formSubmit`: se marcan los campos con error y se emite `errorOccurred`.
+
+`event.detail` tiene siempre la misma forma, un objeto por formulario indexado por su `formId`:
+
+```json
+{
+  "form_contacto": { "nombre": "Ana", "email": "ana@correo.com" },
+  "form_envio": { "ciudad": "CDMX" }
+}
+```
+
+Los campos deshabilitados (por ejemplo, los ocultos por `showIf` / `hideIf`) no se incluyen.
+
+## Botones con `data-dynamic-action` dentro de un `<form>`
+
+Un botón con `data-dynamic-action` nunca dispara el envío nativo del formulario, aunque sea de tipo `submit`. Solo produce su acción: si el nombre contiene `submit` se convierte en `formSubmit` como se describe arriba, y en cualquier otro caso llega como `actionTriggered`.
+
 ---
 
 [← Volver al índice de documentación](../README.md#documentación)
